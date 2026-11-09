@@ -52,6 +52,13 @@ jobs:
             -d "{\"contaOrigemId\":\"$ANA\",\"chavePixDestino\":\"loja.geraldo@paguai.local\",\"valor\":10}"
           curl -fs http://localhost:8025/api/v1/messages | jq '.total'
 
+      - name: Logs da API sem avisos conhecidos
+        run: |
+          docker compose logs api > api.log
+          if grep -E "libgssapi|Overriding HTTP_PORTS" api.log; then
+            echo "Encontrado aviso que deveria ter sido eliminado"; exit 1
+          fi
+
       - name: Logs em caso de falha
         if: failure()
         run: docker compose logs

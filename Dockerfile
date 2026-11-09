@@ -10,7 +10,7 @@ RUN dotnet publish src/PagUai.Api/PagUai.Api.csproj -c Release -o /app --no-rest
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
 COPY --from=build /app .
-ENV ASPNETCORE_URLS=http://+:8080
+# A imagem do .NET 10 já escuta na porta 8080 (variável HTTP_PORTS).
 EXPOSE 8080
 USER $APP_UID
 ENTRYPOINT ["dotnet", "PagUai.Api.dll"]

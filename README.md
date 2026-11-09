@@ -50,6 +50,18 @@ docker compose up -d --build
 
 Requisições prontas: [`requests/paguai.http`](requests/paguai.http) (extensão REST Client).
 
+### Problemas comuns
+
+| Sintoma | Causa | Solução |
+| --- | --- | --- |
+| `Bind for 0.0.0.0:8080 failed: port is already allocated` | Outro programa ou contêiner já usa a porta | Descubra quem é: `sudo ss -ltnp \| grep :8080` (Linux), `lsof -i :8080` (macOS), `netstat -ano \| findstr :8080` (Windows) e `docker ps`. Pare o processo ou suba em outra porta: `PAGUAI_API_PORT=8081 docker compose up -d` |
+| Depois de corrigir a porta, a API não acha o banco (`Resource temporarily unavailable` nos logs) | O contêiner da API ficou com a rede incompleta após a primeira falha | Recrie tudo: `docker compose down` e depois `docker compose up -d`. Não basta religar o contêiner |
+| `buildx Docker CLI plugin not found` | Docker sem o plugin buildx | Apenas um aviso; o build funciona. Para eliminá-lo, instale o pacote `docker-buildx-plugin` |
+| `fail: Failed executing DbCommand ... __EFMigrationsHistory` na primeira execução | A tabela de controle de migrations ainda não existe; o EF registra como erro e cria a tabela em seguida | Normal na primeira vez. Confira se depois aparece `Dados fictícios iniciais inseridos.` |
+| `curl` sem resposta em `/health` | A API ainda está subindo ou caiu | `docker compose ps` e `docker compose logs api --tail 40` |
+
+Portas configuráveis: `PAGUAI_API_PORT` (8080), `PAGUAI_DB_PORT` (5432), `PAGUAI_MAIL_UI_PORT` (8025) e `PAGUAI_SMTP_PORT` (1025).
+
 ### Endpoints
 
 | Método e rota | O que faz |

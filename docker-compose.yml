@@ -2,15 +2,20 @@
 # Sobe tudo com:  docker compose up -d --build
 #   API + documentação (Scalar): http://localhost:8080
 #   Caixa de e-mails (Mailpit):  http://localhost:8025
+#
+# Porta ocupada na sua máquina? Troque sem editar este arquivo, por exemplo:
+#   PAGUAI_API_PORT=8081 docker compose up -d
+# Variáveis disponíveis: PAGUAI_API_PORT, PAGUAI_DB_PORT, PAGUAI_MAIL_UI_PORT, PAGUAI_SMTP_PORT
 
 services:
   api:
     build: .
     container_name: paguai-api
+    restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "${PAGUAI_API_PORT:-8080}:8080"
     environment:
-      ConnectionStrings__PagUai: "Host=postgres;Port=5432;Database=paguai;Username=paguai;Password=paguai_dev_123"
+      ConnectionStrings__PagUai: "Host=postgres;Port=5432;Database=paguai;Username=paguai;Password=paguai_dev_123;Gss Encryption Mode=Disable"
       Notificacoes__SmtpHost: "mailpit"
       Notificacoes__SmtpPort: "1025"
       # Mude para "true" para ver a dor da Sprint 3 (falha na notificação derruba a transferência).
@@ -31,7 +36,7 @@ services:
       POSTGRES_USER: paguai
       POSTGRES_PASSWORD: paguai_dev_123   # senha só para o laboratório local
     ports:
-      - "5432:5432"
+      - "${PAGUAI_DB_PORT:-5432}:5432"
     volumes:
       - paguai-dados:/var/lib/postgresql/data
     healthcheck:
@@ -44,8 +49,8 @@ services:
     image: axllent/mailpit:latest
     container_name: paguai-mailpit
     ports:
-      - "8025:8025"   # interface web
-      - "1025:1025"   # SMTP
+      - "${PAGUAI_MAIL_UI_PORT:-8025}:8025"   # interface web
+      - "${PAGUAI_SMTP_PORT:-1025}:1025"   # SMTP
 
 volumes:
   paguai-dados:
