@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["sprint-*"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-e-testes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restaurar
+        run: dotnet restore
+
+      - name: Compilar
+        run: dotnet build --no-restore -c Release
+
+      - name: Testes (unidade e integração com Testcontainers)
+        run: dotnet test --no-build -c Release
+
+  docker-compose:
+    runs-on: ubuntu-latest
+    needs: build-e-testes
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Subir o ambiente
+        run: docker compose up -d --build
+
+      - name: Esperar a API ficar saudável
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fs http://localhost:8080/health; then exit 0; fi
+            sleep 3
+          done
+          docker compose logs api
+          exit 1
+
+      - name: Teste de fumaça (transferência PIX simulada)
+        run: |
+          ANA=$(curl -fs http://localhost:8080/contas | jq -r '.[] | select(.titular | startswith("Ana")) | .id')
+          curl -fs -X POST http://localhost:8080/transferencias \
+            -H 'content-type: application/json' \
+            -d "{\"contaOrigemId\":\"$ANA\",\"chavePixDestino\":\"loja.geraldo@paguai.local\",\"valor\":10}"
+          curl -fs http://localhost:8025/api/v1/messages | jq '.total'
+
+      - name: Logs em caso de falha
+        if: failure()
+        run: docker compose logs
+
+      - name: Derrubar o ambiente
+        if: always()
+        run: docker compose down -v

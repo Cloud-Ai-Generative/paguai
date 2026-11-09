@@ -1,0 +1,51 @@
+# PagUai, Sprint 0: o monólito.
+# Sobe tudo com:  docker compose up -d --build
+#   API + documentação (Scalar): http://localhost:8080
+#   Caixa de e-mails (Mailpit):  http://localhost:8025
+
+services:
+  api:
+    build: .
+    container_name: paguai-api
+    ports:
+      - "8080:8080"
+    environment:
+      ConnectionStrings__PagUai: "Host=postgres;Port=5432;Database=paguai;Username=paguai;Password=paguai_dev_123"
+      Notificacoes__SmtpHost: "mailpit"
+      Notificacoes__SmtpPort: "1025"
+      # Mude para "true" para ver a dor da Sprint 3 (falha na notificação derruba a transferência).
+      Notificacoes__SimularFalha: "false"
+      # Aumente para ver o monólito inteiro ficar lento (Sprints 6 e 9).
+      Antifraude__LatenciaMs: "300"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: paguai-postgres
+    environment:
+      POSTGRES_DB: paguai
+      POSTGRES_USER: paguai
+      POSTGRES_PASSWORD: paguai_dev_123   # senha só para o laboratório local
+    ports:
+      - "5432:5432"
+    volumes:
+      - paguai-dados:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U paguai -d paguai"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: paguai-mailpit
+    ports:
+      - "8025:8025"   # interface web
+      - "1025:1025"   # SMTP
+
+volumes:
+  paguai-dados:
