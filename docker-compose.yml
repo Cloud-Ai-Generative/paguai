@@ -99,7 +99,8 @@ services:
     image: stoplight/prism:5
     container_name: paguai-mock-extrato
     profiles: ["mock"]
-    command: mock -h 0.0.0.0 /contratos/extrato.openapi.yaml
+    # --multiprocess=false: a imagem do Prism 5 falha ao iniciar no modo com vários processos.
+    command: mock -h 0.0.0.0 --multiprocess=false /contratos/extrato.openapi.yaml
     volumes:
       - ./contratos:/contratos:ro
     ports:
