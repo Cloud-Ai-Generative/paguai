@@ -1,46 +1,40 @@
-# ADR 0003: Qual módulo sai primeiro do monólito
+# ADR 0003: O Extrato é o primeiro módulo a sair do monólito
 
-> **Modelo para você preencher (Sprint 1).** Use os critérios da aba Sprint 1 da ODA. Responda às perguntas-guia, apague as perguntas e faça o commit no seu fork. Depois compare com a versão aprovada pela Helena, na ODA.
-
-- **Status:** proposta
-- **Proposto por:** _(seu nome)_, arquiteto(a)
+- **Status:** aceita (Sprint 1)
+- **Proposto por:** o(a) arquiteto(a) do time (você, na Sprint 1)
 - **Revisão e aprovação:** Helena Rocha, Coordenadora de Arquitetura
-- **Data:** _(data de hoje)_
+
+> Esta é a versão aprovada. Compare com a sua proposta da Sprint 1.
 
 ## Contexto
 
-_Perguntas-guia:_
-- _O que a Joana (Product Owner) espera ganhar com a primeira extração?_
-- _O que o Rafa (Tech Lead) teme? Quanto custa operar cada serviço novo?_
-- _Por que extrair um módulo de cada vez, e não todos juntos?_
+A Joana precisa mostrar progresso; o Rafa teme o custo de operar muitos serviços de uma vez. A primeira extração vai ensinar o time a operar um serviço separado (rede, deploy próprio, monitoramento), então ela deve ter o menor risco possível.
 
 ## Critérios
 
-Avalie os seis módulos. Use **alto**, **médio** ou **baixo**.
-
-| Módulo | Escala diferente do resto | Ritmo de mudança diferente | Isolamento de falha | Precisa de transação com outros módulos | Risco de errar a fronteira |
+| Módulo | Escala própria | Ritmo próprio | Isolamento de falha | Transação com outros | Risco da fronteira |
 | --- | --- | --- | --- | --- | --- |
-| Contas | | | | | |
-| Pagamentos | | | | | |
-| Cobranças | | | | | |
-| Antifraude | | | | | |
-| Extrato | | | | | |
-| Notificações | | | | | |
+| Contas | baixa | baixo | médio | alta (abertura cria saldo) | baixo |
+| Pagamentos | alta | médio | alto | **alta** (centro do PIX) | **alto** |
+| Cobranças | média | médio | médio | alta (paga via Pagamentos) | médio |
+| Antifraude | alta | alto | alto | média | médio, mas no caminho crítico |
+| **Extrato** | **alta** (consultas) | médio | **alto** (derrubou o checkout) | **nenhuma** (só leitura) | **baixo** |
+| Notificações | média | médio | alto | alta (dentro da transação) | baixo, mas pede assincronia |
 
 ## Decisão
 
-_Perguntas-guia:_
-- _Qual módulo sai primeiro? Por quê ele e não os outros?_
-- _Como o resto do sistema continua funcionando enquanto ele sai?_
+O Extrato sai primeiro, na Sprint 2, com o padrão **Strangler Fig**: um proxy na frente desvia só a rota do extrato para o novo serviço, e o monólito continua atendendo o resto.
 
 ## Alternativas consideradas
 
 | Alternativa | Por que não agora |
 | --- | --- |
-| _..._ | _..._ |
+| Antifraude | Forte candidato, mas está no caminho crítico de todo PIX. Extraí-lo antes de ter timeout e resiliência (Sprint 9) põe cada pagamento atrás de uma chamada de rede. |
+| Notificações | Precisa de comunicação assíncrona (Sprint 3). Extraída como chamada síncrona, manteria o acoplamento. |
+| Pagamentos | Subdomínio central e participante de quase todas as transações: o maior risco de todos. |
 
 ## Consequências
 
-_Perguntas-guia:_
-- _O que a PagUai ganha com essa primeira extração?_
-- _Que problemas novos aparecem quando existe uma rede entre dois módulos?_
+- A PagUai ganha um deploy independente para a parte que mais derrubou o checkout, com risco baixo.
+- Aparece uma rede entre o Extrato e Pagamentos: latência, falhas parciais e a pergunta "o que acontece quando o Extrato cai?" (Sprint 2).
+- As próximas extrações serão decididas em novos ADRs.

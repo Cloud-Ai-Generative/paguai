@@ -8,11 +8,18 @@ public record LancamentoResponse(DateTime Data, string Tipo, decimal Valor, stri
 public record ExtratoResponse(Guid ContaId, string Titular, decimal SaldoAtual, DateTime De, DateTime Ate, IReadOnlyList<LancamentoResponse> Lancamentos);
 
 /// <summary>
+/// Sprint 2 (Strangler Fig): este é o Extrato ANTIGO, ainda dentro do monólito. O gateway decide
+/// se a rota vai para cá ou para o serviço novo (PagUai.Extrato), pela configuração Strangler__Extrato.
+/// Ele será apagado na Sprint 3, quando o serviço novo estiver confiável.
+///
 /// Sprint 1: o Extrato virou um módulo SÓ DE LEITURA. Não tem tabelas: monta a resposta
 /// perguntando a Contas (titular) e a Pagamentos (saldo e lançamentos), pelos contratos públicos.
 /// </summary>
 public static class ExtratoEndpoints
 {
+    /// <summary>O extrato antigo devolve tudo do período, sem paginação, como na Sprint 1.</summary>
+    private const int LimiteLegado = 10_000;
+
     public static RouteHandlerBuilder MapExtrato(this IEndpointRouteBuilder app)
     {
         // VULNERABILIDADE PROPOSITAL (Sprints 11 e 12): não há autenticação nem verificação de dono da conta.
@@ -31,7 +38,7 @@ public static class ExtratoEndpoints
             }
 
             var saldo = await pagamentos.ObterSaldoAsync(id, ct) ?? 0m;
-            var movimentos = await pagamentos.ListarMovimentosAsync(id, inicio, fim, ct);
+            var movimentos = (await pagamentos.ListarMovimentosAsync(id, inicio, fim, LimiteLegado, null, ct)).Itens;
 
             return new ExtratoResponse(conta.Id, conta.Titular, saldo, inicio, fim,
                 movimentos.Select(m => new LancamentoResponse(m.Data, m.Tipo, m.Valor, m.Descricao)).ToList());

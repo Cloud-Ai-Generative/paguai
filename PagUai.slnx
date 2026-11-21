@@ -1,8 +1,12 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/PagUai.Api/PagUai.Api.csproj" />
+    <Project Path="src/PagUai.Extrato/PagUai.Extrato.csproj" />
+    <Project Path="src/PagUai.Gateway/PagUai.Gateway.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/PagUai.Api.Tests/PagUai.Api.Tests.csproj" />
+    <Project Path="tests/PagUai.Extrato.Tests/PagUai.Extrato.Tests.csproj" />
+    <Project Path="tests/PagUai.Gateway.Tests/PagUai.Gateway.Tests.csproj" />
   </Folder>
 </Solution>

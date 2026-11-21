@@ -1,19 +1,47 @@
-# PagUai, Sprint 1: o monólito modular (um processo, um banco, um schema por módulo).
+# PagUai, Sprint 2: Strangler Fig. O gateway fica na frente; a rota do extrato vai para o
+# primeiro serviço extraído do monólito.
 # Sobe tudo com:  docker compose up -d --build
-#   API + documentação (Scalar): http://localhost:8080
-#   Caixa de e-mails (Mailpit):  http://localhost:8025
+#   Porta de entrada (gateway YARP):           http://localhost:8080
+#   Monólito modular, direto (Scalar):          http://localhost:8081
+#   Serviço de Extrato, direto (Scalar):        http://localhost:8082
+#   Caixa de e-mails (Mailpit):                 http://localhost:8025
+#   Mock do contrato do Extrato (Prism):        docker compose --profile mock up -d  →  http://localhost:4010
 #
 # Porta ocupada na sua máquina? Troque sem editar este arquivo, por exemplo:
-#   PAGUAI_API_PORT=8081 docker compose up -d
-# Variáveis disponíveis: PAGUAI_API_PORT, PAGUAI_DB_PORT, PAGUAI_MAIL_UI_PORT, PAGUAI_SMTP_PORT
+#   PAGUAI_API_PORT=9080 docker compose up -d
+# Variáveis: PAGUAI_API_PORT, PAGUAI_MONOLITO_PORT, PAGUAI_EXTRATO_PORT, PAGUAI_DB_PORT,
+#            PAGUAI_MAIL_UI_PORT, PAGUAI_SMTP_PORT, PAGUAI_MOCK_PORT
 
 services:
-  api:
-    build: .
-    container_name: paguai-api
+  gateway:
+    build:
+      context: .
+      args:
+        PROJETO: PagUai.Gateway
+    container_name: paguai-gateway
     restart: unless-stopped
     ports:
       - "${PAGUAI_API_PORT:-8080}:8080"
+    environment:
+      Destinos__Monolito: "http://api:8080"
+      Destinos__Extrato: "http://extrato:8080"
+      # Strangler Fig: para onde vai GET /contas/{id}/extrato?
+      #   "servico"  → serviço de Extrato (novo)
+      #   "monolito" → Extrato antigo, dentro do monólito (voltar atrás sem mudar código)
+      Strangler__Extrato: "servico"
+    depends_on:
+      - api
+      - extrato
+
+  api:
+    build:
+      context: .
+      args:
+        PROJETO: PagUai.Api
+    container_name: paguai-api
+    restart: unless-stopped
+    ports:
+      - "${PAGUAI_MONOLITO_PORT:-8081}:8080"
     environment:
       ConnectionStrings__PagUai: "Host=postgres;Port=5432;Database=paguai;Username=paguai;Password=paguai_dev_123;Gss Encryption Mode=Disable"
       Notificacoes__SmtpHost: "mailpit"
@@ -27,6 +55,19 @@ services:
         condition: service_healthy
       mailpit:
         condition: service_started
+
+  extrato:
+    build:
+      context: .
+      args:
+        PROJETO: PagUai.Extrato
+    container_name: paguai-extrato
+    restart: unless-stopped
+    ports:
+      - "${PAGUAI_EXTRATO_PORT:-8082}:8080"
+    environment:
+      # O Extrato não tem banco: pergunta ao monólito (Contas e Pagamentos) por HTTP.
+      Monolito__Url: "http://api:8080"
 
   postgres:
     image: postgres:17-alpine
@@ -51,6 +92,19 @@ services:
     ports:
       - "${PAGUAI_MAIL_UI_PORT:-8025}:8025"   # interface web
       - "${PAGUAI_SMTP_PORT:-1025}:1025"   # SMTP
+
+  # API FIRST: um mock que responde exatamente o que o contrato descreve, antes de o código existir.
+  # Só sobe com o perfil "mock":  docker compose --profile mock up -d mock
+  mock:
+    image: stoplight/prism:5
+    container_name: paguai-mock-extrato
+    profiles: ["mock"]
+    # --multiprocess=false: a imagem do Prism 5 falha ao iniciar no modo com vários processos.
+    command: mock -h 0.0.0.0 --multiprocess=false /contratos/extrato.openapi.yaml
+    volumes:
+      - ./contratos:/contratos:ro
+    ports:
+      - "${PAGUAI_MOCK_PORT:-4010}:4010"
 
 volumes:
   paguai-dados:
