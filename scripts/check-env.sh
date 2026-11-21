@@ -16,14 +16,25 @@ if docker compose version >/dev/null 2>&1; then
 else
   printf '  [FALTA] %-16s %s\n' "docker compose" "atualize o Docker"; ok=1
 fi
-if docker info >/dev/null 2>&1; then
-  echo "  [OK]    Docker está em execução"
-else
-  echo "  [FALTA] O Docker está instalado mas não está em execução"; ok=1
+if command -v docker >/dev/null 2>&1; then
+  if docker info >/dev/null 2>&1; then
+    echo "  [OK]    Docker está em execução"
+  else
+    echo "  [FALTA] O Docker está instalado mas não está em execução (abra o Docker Desktop ou rode: sudo systemctl start docker)"; ok=1
+  fi
 fi
-check dotnet "dotnet --version" "opcional para rodar fora do Docker: https://dotnet.microsoft.com/download/dotnet/10.0"
+if command -v dotnet >/dev/null 2>&1; then
+  printf '  [OK]    %-16s %s\n' "dotnet" "$(dotnet --version 2>/dev/null | head -n 1)"
+else
+  echo "  [OPCIONAL] dotnet: só é necessário para rodar fora do Docker (https://dotnet.microsoft.com/download/dotnet/10.0)"
+fi
+mem=""
 if [ -r /proc/meminfo ]; then
   mem=$(awk '/MemTotal/ {printf "%.0f", $2/1024/1024}' /proc/meminfo)
+elif command -v sysctl >/dev/null 2>&1 && sysctl -n hw.memsize >/dev/null 2>&1; then
+  mem=$(( $(sysctl -n hw.memsize) / 1024 / 1024 / 1024 ))
+fi
+if [ -n "$mem" ]; then
   [ "$mem" -lt 8 ] && echo "  [ATENÇÃO] ${mem} GB de RAM: considere usar o GitHub Codespaces" || echo "  [OK]    ${mem} GB de RAM"
 fi
 [ $ok -eq 0 ] && echo "Tudo pronto! Rode: docker compose up -d --build" || echo "Corrija os itens marcados com [FALTA]."
