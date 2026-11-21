@@ -92,6 +92,41 @@ public class PagamentosTests(PagUaiApiFactory factory) : IClassFixture<PagUaiApi
         Assert.Equal(60m, await SaldoAsync(cliente.Id));
     }
 
+    /// <summary>Sprint 2: o serviço de Extrato pagina os movimentos por cursor, pelo endpoint de Pagamentos.</summary>
+    [Fact]
+    public async Task Movimentos_sao_paginados_por_cursor_sem_repetir_itens()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var origem = await AbrirContaAsync(_http, 1000m);
+        var destino = await AbrirContaAsync(_http, 0m);
+        foreach (var valor in new[] { 10m, 20m, 30m })
+        {
+            (await _http.PostAsJsonAsync("/transferencias", new TransferirRequest(origem.Id, destino.ChavePix, valor), ct)).EnsureSuccessStatusCode();
+        }
+
+        var de = Uri.EscapeDataString(DateTime.UtcNow.AddDays(-1).ToString("O"));
+        var ate = Uri.EscapeDataString(DateTime.UtcNow.AddMinutes(1).ToString("O"));
+        var url = $"/pagamentos/contas/{origem.Id}/movimentos?de={de}&ate={ate}&limite=2";
+        var pagina1 = await _http.GetFromJsonAsync<PaginaDeMovimentosResponse>(url, ct);
+        var pagina2 = await _http.GetFromJsonAsync<PaginaDeMovimentosResponse>($"{url}&cursor={pagina1!.ProximoCursor}", ct);
+
+        Assert.Equal(2, pagina1.Itens.Count);
+        Assert.NotNull(pagina1.ProximoCursor);
+        Assert.Equal(2, pagina2!.Itens.Count);
+        Assert.Null(pagina2.ProximoCursor);
+        Assert.Empty(pagina1.Itens.Select(i => i.Id).Intersect(pagina2.Itens.Select(i => i.Id)));
+        Assert.Equal(new[] { 30m, 20m, 10m, 1000m }, pagina1.Itens.Concat(pagina2.Itens).Select(i => i.Valor));
+    }
+
+    [Fact]
+    public async Task Cursor_invalido_responde_422()
+    {
+        var conta = await AbrirContaAsync(_http, 10m);
+        var resp = await _http.GetAsync($"/pagamentos/contas/{conta.Id}/movimentos?de=2026-01-01T00:00:00Z&ate=2030-01-01T00:00:00Z&cursor=lixo", TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, resp.StatusCode);
+    }
+
     /// <summary>
     /// Documenta a DOR da Sprint 3, que a Sprint 1 NÃO resolve: com a notificação dentro da
     /// transação, uma falha no e-mail desfaz a transferência inteira, mesmo com módulos separados.

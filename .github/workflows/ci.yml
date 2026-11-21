@@ -26,6 +26,21 @@ jobs:
       - name: Testes (unidade e integração com Testcontainers)
         run: dotnet test --no-build -c Release
 
+  contrato:
+    name: Contrato do Extrato (lint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Lint do contrato com Spectral (regras OpenAPI)
+        run: |
+          echo 'extends: ["spectral:oas"]' > .spectral.yaml
+          npx --yes @stoplight/spectral-cli@6 lint contratos/extrato.openapi.yaml --fail-severity=warn
+
   docker-compose:
     runs-on: ubuntu-latest
     needs: build-e-testes
@@ -35,29 +50,58 @@ jobs:
       - name: Subir o ambiente
         run: docker compose up -d --build
 
-      - name: Esperar a API ficar saudável
+      - name: Esperar o gateway, o monólito e o Extrato
         run: |
-          for i in $(seq 1 30); do
-            if curl -fs http://localhost:8080/health; then exit 0; fi
+          for i in $(seq 1 40); do
+            if curl -fs http://localhost:8080/health && curl -fs http://localhost:8082/health; then exit 0; fi
             sleep 3
           done
-          docker compose logs api
+          docker compose logs
           exit 1
 
-      - name: Teste de fumaça (transferência PIX simulada e saldo)
+      - name: Teste de fumaça pelo gateway (PIX, saldo e extrato no serviço novo)
         run: |
           ANA=$(curl -fs http://localhost:8080/contas | jq -r '.[] | select(.titular | startswith("Ana")) | .id')
+          echo "ANA=$ANA" >> "$GITHUB_ENV"
           curl -fs -X POST http://localhost:8080/transferencias \
             -H 'content-type: application/json' \
             -d "{\"contaOrigemId\":\"$ANA\",\"chavePixDestino\":\"loja.geraldo@paguai.local\",\"valor\":10}"
           curl -fs http://localhost:8025/api/v1/messages | jq '.total'
-          echo "Saldo da Ana (módulo Pagamentos):"
           curl -fs http://localhost:8080/saldos/$ANA | jq '.saldo'
+          curl -fsi "http://localhost:8080/contas/$ANA/extrato?limite=1" | tee extrato.txt
+          grep -qi "x-paguai-servico: extrato" extrato.txt
 
-      - name: Logs da API sem avisos conhecidos
+      - name: Extrato fora do ar não derruba o PIX
         run: |
-          docker compose logs api > api.log
-          if grep -E "libgssapi|Overriding HTTP_PORTS" api.log; then
+          docker compose stop extrato
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/contas/$ANA/extrato)" = "502"
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8080/transferencias \
+            -H 'content-type: application/json' \
+            -d "{\"contaOrigemId\":\"$ANA\",\"chavePixDestino\":\"loja.geraldo@paguai.local\",\"valor\":5}")" = "201"
+          docker compose start extrato
+
+      - name: Voltar atrás (Strangler__Extrato=monolito)
+        run: |
+          sed -i 's/Strangler__Extrato: "servico"/Strangler__Extrato: "monolito"/' docker-compose.yml
+          docker compose up -d gateway
+          sleep 5
+          curl -fsi http://localhost:8080/contas/$ANA/extrato | grep -i "x-paguai-servico: monolito"
+          git checkout -- docker-compose.yml
+
+      - name: Mock do contrato com Prism
+        run: |
+          docker compose --profile mock up -d mock
+          for i in $(seq 1 20); do
+            if curl -fs http://localhost:4010/contas/2a981875-052f-4076-abee-bf4e0b1a7abd/extrato; then exit 0; fi
+            sleep 2
+          done
+          docker compose logs mock
+          exit 1
+
+      - name: Logs sem avisos conhecidos
+        run: |
+          docker compose logs api extrato gateway > servicos.log
+          if grep -E "libgssapi|Overriding HTTP_PORTS" servicos.log; then
             echo "Encontrado aviso que deveria ter sido eliminado"; exit 1
           fi
 
@@ -67,7 +111,7 @@ jobs:
 
       - name: Derrubar o ambiente
         if: always()
-        run: docker compose down -v
+        run: docker compose --profile mock down -v
 
   verificacao-ambiente:
     name: Script de verificação (${{ matrix.os }})

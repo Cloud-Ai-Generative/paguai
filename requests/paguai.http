@@ -1,4 +1,5 @@
-### PagUai: requisições prontas para o laboratório da Sprint 1 (monólito modular)
+### PagUai: requisições prontas para o laboratório da Sprint 2 (Strangler Fig)
+### Tudo passa pelo gateway (8080). Veja o cabeçalho X-PagUai-Servico de cada resposta: quem atendeu?
 ### Use com a extensão REST Client do VS Code (clique em "Send Request" acima de cada bloco).
 
 @api = http://localhost:8080
@@ -35,7 +36,7 @@ Content-Type: application/json
   "valor": 6000.00
 }
 
-### 6. Extrato da Ana (módulo Extrato, só leitura: pergunta a Contas e a Pagamentos)
+### 6. Extrato da Ana: agora atendido pelo SERVIÇO de Extrato (X-PagUai-Servico: extrato)
 GET {{api}}/contas/{{ana}}/extrato
 
 
@@ -60,3 +61,15 @@ Content-Type: application/json
 {
   "contaPagadoraId": "{{ana}}"
 }
+
+### 9. Extrato paginado: 2 lançamentos por página. Para a próxima, use o proximoCursor da resposta.
+GET {{api}}/contas/{{ana}}/extrato?limite=2
+
+### 10. Período acima de 90 dias: 422 no formato Problem Details
+GET {{api}}/contas/{{ana}}/extrato?de=2026-01-01T00:00:00Z
+
+### 11. Direto no serviço de Extrato (sem o gateway)
+GET http://localhost:8082/contas/{{ana}}/extrato
+
+### 12. No mock do contrato (Prism), sem código nenhum: docker compose --profile mock up -d mock
+GET http://localhost:4010/contas/2a981875-052f-4076-abee-bf4e0b1a7abd/extrato

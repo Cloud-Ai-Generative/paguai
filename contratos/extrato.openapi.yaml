@@ -1,0 +1,176 @@
+# Contrato do serviço de Extrato da PagUai (empresa FICTÍCIA, fins didáticos).
+#
+# API FIRST: este arquivo foi escrito ANTES do código, na Sala de Contrato da Sprint 2
+# (ODA, aba Sprint 2), com a Lívia (front-end, consumidora da API), a Joana, o Rafa e
+# aprovação da Helena. O código do serviço (src/PagUai.Extrato) segue este contrato, e o
+# teste ContratoTests falha se a implementação divergir dele.
+#
+# Restrição do Strangler Fig: o app já usa o extrato do monólito. Por isso este contrato só
+# ACRESCENTA campos e parâmetros opcionais ao formato antigo; nada do que existia muda.
+openapi: 3.1.0
+info:
+  title: PagUai · Serviço de Extrato
+  version: 1.0.0
+  description: |
+    Extrato de uma conta: saldo atual e lançamentos do período, do mais recente para o mais antigo.
+
+    Decisões registradas no ADR 0004:
+    - Valores em dinheiro continuam como número, com duas casas decimais, para não quebrar o app
+      (texto, como "150.00", fica como candidato a uma nova versão na Sprint 7).
+    - Paginação por cursor, opcional: sem `limite`, devolve até 100 lançamentos.
+    - Período padrão de 30 dias e máximo de 90 dias.
+    - O saldo vem dentro do extrato, com o momento da consulta (`saldoEm`).
+    - Erros no formato Problem Details (RFC 9457), com um `type` para cada erro.
+    - Sem prefixo de versão: só mudanças que não quebram.
+  contact:
+    name: Time de Arquitetura da PagUai (fictício)
+servers:
+  - url: http://localhost:8080
+    description: Pelo gateway (como o app e o portal do lojista acessam)
+  - url: http://localhost:8082
+    description: Direto no serviço de Extrato (laboratório)
+  - url: http://localhost:4010
+    description: Mock do contrato com Prism (antes de o código existir)
+tags:
+  - name: Extrato
+    description: Consulta do extrato de uma conta.
+# VULNERABILIDADE PROPOSITAL, registrada no próprio contrato: ainda não há autenticação.
+# Qualquer pessoa que souber o id consegue ver o extrato (BOLA, OWASP API1). Sprints 11 e 12.
+security: []
+x-paguai-vulnerabilidade-proposital: "Sem autenticação e sem verificação de dono da conta até a Sprint 11."
+paths:
+  /contas/{contaId}/extrato:
+    get:
+      tags: [Extrato]
+      operationId: consultarExtrato
+      summary: Consulta o extrato de uma conta
+      description: |
+        Devolve o saldo atual e os lançamentos do período, do mais recente para o mais antigo.
+        Para a próxima página, repita a chamada com `cursor` igual ao `proximoCursor` recebido.
+      parameters:
+        - name: contaId
+          in: path
+          required: true
+          description: Id da conta.
+          schema: { type: string, format: uuid }
+          example: 2a981875-052f-4076-abee-bf4e0b1a7abd
+        - name: de
+          in: query
+          required: false
+          description: Início do período (ISO 8601). Padrão, 30 dias antes de `ate`.
+          schema: { type: string, format: date-time }
+        - name: ate
+          in: query
+          required: false
+          description: Fim do período (ISO 8601). Padrão, o momento da consulta.
+          schema: { type: string, format: date-time }
+        - name: limite
+          in: query
+          required: false
+          description: Quantidade máxima de lançamentos nesta página (1 a 200). Padrão, 100.
+          schema: { type: integer, minimum: 1, maximum: 200, default: 100 }
+        - name: cursor
+          in: query
+          required: false
+          description: Valor de `proximoCursor` da página anterior. Opaco para quem consome.
+          schema: { type: string }
+      responses:
+        "200":
+          description: Extrato do período.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Extrato" }
+              example:
+                contaId: 2a981875-052f-4076-abee-bf4e0b1a7abd
+                titular: Ana Clara Mendes
+                saldoAtual: 9950.00
+                saldoEm: "2026-11-21T03:00:00Z"
+                de: "2026-10-22T03:00:00Z"
+                ate: "2026-11-21T03:00:00Z"
+                lancamentos:
+                  - data: "2026-11-21T02:58:03Z"
+                    tipo: Debito
+                    valor: 50.00
+                    descricao: PIX para Loja do Seu Geraldo
+                  - data: "2026-11-21T02:58:01Z"
+                    tipo: Credito
+                    valor: 10000.00
+                    descricao: Depósito inicial
+                proximoCursor: null
+        "404":
+          description: Conta não encontrada.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problema" }
+              example:
+                type: https://paguai.local/problemas/conta-nao-encontrada
+                title: Conta não encontrada
+                status: 404
+                detail: Não existe conta com este id.
+        "422":
+          description: Período ou parâmetro inválido.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problema" }
+              example:
+                type: https://paguai.local/problemas/periodo-invalido
+                title: Período inválido
+                status: 422
+                detail: O período máximo é de 90 dias.
+        "503":
+          description: Uma dependência do extrato (Contas ou Pagamentos) está indisponível.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problema" }
+              example:
+                type: https://paguai.local/problemas/dependencia-indisponivel
+                title: Dependência indisponível
+                status: 503
+                detail: Não foi possível consultar Pagamentos. Tente novamente em instantes.
+components:
+  schemas:
+    Extrato:
+      type: object
+      required: [contaId, titular, saldoAtual, saldoEm, de, ate, lancamentos, proximoCursor]
+      additionalProperties: false
+      properties:
+        contaId: { type: string, format: uuid }
+        titular: { type: string }
+        saldoAtual:
+          type: number
+          multipleOf: 0.01
+          description: Saldo no momento `saldoEm`, em reais, com duas casas decimais.
+        saldoEm:
+          type: string
+          format: date-time
+          description: Momento em que o saldo foi consultado em Pagamentos.
+        de: { type: string, format: date-time }
+        ate: { type: string, format: date-time }
+        lancamentos:
+          type: array
+          items: { $ref: "#/components/schemas/Lancamento" }
+        proximoCursor:
+          type: [string, "null"]
+          description: Cursor da próxima página, ou null quando não há mais lançamentos.
+    Lancamento:
+      type: object
+      required: [data, tipo, valor, descricao]
+      additionalProperties: false
+      properties:
+        data: { type: string, format: date-time }
+        tipo: { type: string, enum: [Credito, Debito] }
+        valor:
+          type: number
+          exclusiveMinimum: 0
+          multipleOf: 0.01
+          description: Valor em reais, sempre positivo; o sentido está em `tipo`.
+        descricao: { type: string }
+    Problema:
+      type: object
+      description: Problem Details (RFC 9457).
+      required: [type, title, status, detail]
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }

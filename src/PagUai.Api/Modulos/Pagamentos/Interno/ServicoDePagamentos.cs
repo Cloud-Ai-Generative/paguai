@@ -86,12 +86,34 @@ public class ServicoDePagamentos(
     public async Task<decimal?> ObterSaldoAsync(Guid contaId, CancellationToken ct) =>
         await db.Saldos.Where(s => s.ContaId == contaId).Select(s => (decimal?)s.Valor).FirstOrDefaultAsync(ct);
 
-    public async Task<IReadOnlyList<Movimento>> ListarMovimentosAsync(Guid contaId, DateTime de, DateTime ate, CancellationToken ct) =>
-        await db.Lancamentos
-            .Where(l => l.ContaId == contaId && l.Data >= de && l.Data <= ate)
-            .OrderByDescending(l => l.Data)
-            .Select(l => new Movimento(l.Data, l.Tipo.ToString(), l.Valor, l.Descricao))
+    public async Task<PaginaDeMovimentos> ListarMovimentosAsync(Guid contaId, DateTime de, DateTime ate, int limite, string? cursor, CancellationToken ct)
+    {
+        var consulta = db.Lancamentos.Where(l => l.ContaId == contaId && l.Data >= de && l.Data <= ate);
+
+        // Paginação por cursor (keyset): continua depois do último item da página anterior.
+        if (CursorDeMovimentos.TentarLer(cursor, out var dataCursor, out var idCursor))
+        {
+            consulta = consulta.Where(l => l.Data < dataCursor || (l.Data == dataCursor && l.Id.CompareTo(idCursor) < 0));
+        }
+        else if (!string.IsNullOrEmpty(cursor))
+        {
+            throw ErroNegocio.Invalido("Cursor inválido.");
+        }
+
+        var itens = await consulta
+            .OrderByDescending(l => l.Data).ThenByDescending(l => l.Id)
+            .Take(limite + 1)
+            .Select(l => new Movimento(l.Id, l.Data, l.Tipo.ToString(), l.Valor, l.Descricao))
             .ToListAsync(ct);
+
+        var temMais = itens.Count > limite;
+        if (temMais)
+        {
+            itens.RemoveAt(itens.Count - 1);
+        }
+
+        return new PaginaDeMovimentos(itens, temMais ? CursorDeMovimentos.Criar(itens[^1].Data, itens[^1].Id) : null);
+    }
 
     private static TransferenciaRealizada ParaContrato(Transferencia t) =>
         new(t.Id, t.ContaOrigemId, t.ContaDestinoId, t.Valor, t.Status == StatusTransferencia.Concluida, t.Status.ToString(), t.CriadaEm);

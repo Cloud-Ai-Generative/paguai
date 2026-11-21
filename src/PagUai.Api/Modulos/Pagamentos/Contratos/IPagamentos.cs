@@ -5,7 +5,10 @@ namespace PagUai.Api.Modulos.Pagamentos.Contratos;
 
 public record TransferenciaRealizada(Guid Id, Guid ContaOrigemId, Guid ContaDestinoId, decimal Valor, bool Concluida, string Status, DateTime CriadaEm);
 
-public record Movimento(DateTime Data, string Tipo, decimal Valor, string Descricao);
+public record Movimento(Guid Id, DateTime Data, string Tipo, decimal Valor, string Descricao);
+
+/// <summary>Uma página de movimentos. <c>ProximoCursor</c> é null quando não há mais itens.</summary>
+public record PaginaDeMovimentos(IReadOnlyList<Movimento> Itens, string? ProximoCursor);
 
 public interface IPagamentos
 {
@@ -14,5 +17,9 @@ public interface IPagamentos
 
     Task<decimal?> ObterSaldoAsync(Guid contaId, CancellationToken ct);
 
-    Task<IReadOnlyList<Movimento>> ListarMovimentosAsync(Guid contaId, DateTime de, DateTime ate, CancellationToken ct);
+    /// <summary>
+    /// Movimentos do período, do mais recente para o mais antigo, em páginas.
+    /// O cursor marca onde a página anterior parou; assim, lançamentos novos não desalinham a navegação.
+    /// </summary>
+    Task<PaginaDeMovimentos> ListarMovimentosAsync(Guid contaId, DateTime de, DateTime ate, int limite, string? cursor, CancellationToken ct);
 }

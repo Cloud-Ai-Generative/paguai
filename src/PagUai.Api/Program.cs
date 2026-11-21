@@ -8,6 +8,9 @@ using PagUai.Api.Modulos.Pagamentos;
 using Scalar.AspNetCore;
 
 // PagUai: fintech FICTÍCIA usada na disciplina "Arquitetura de Microsserviços e APIs".
+// Sprint 2: o monólito modular agora fica ATRÁS de um gateway (PagUai.Gateway), e a rota do
+// extrato pode ir para o primeiro serviço extraído (PagUai.Extrato). Padrão Strangler Fig.
+//
 // Sprint 1: um MONÓLITO MODULAR. Ainda um processo, um deploy e um banco, mas agora cada módulo
 // tem um contrato público, um DbContext e um schema só seus. Os testes de arquitetura garantem
 // que nenhum módulo usa o interior de outro.
@@ -25,6 +28,13 @@ builder.Services.AddOpenApi();
 var app = builder.Build();
 
 app.UseExceptionHandler();
+
+// Sprint 2: cada serviço se identifica na resposta, para você ver quem atendeu pelo gateway.
+app.Use(async (contexto, proximo) =>
+{
+    contexto.Response.Headers["X-PagUai-Servico"] = "monolito";
+    await proximo();
+});
 
 app.MapOpenApi();
 app.MapScalarApiReference(o => o.WithTitle("PagUai API (monólito modular)"));
