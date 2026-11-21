@@ -66,3 +66,28 @@ jobs:
       - name: Derrubar o ambiente
         if: always()
         run: docker compose down -v
+
+  verificacao-ambiente:
+    name: Script de verificação (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Executar check-env.ps1 (Windows PowerShell)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          powershell -ExecutionPolicy Bypass -File .\scripts\check-env.ps1 > saida.txt 2>&1
+          type saida.txt
+          findstr /C:"[OK]" saida.txt >nul || exit 1
+
+      - name: Executar check-env.sh (macOS e Linux)
+        if: runner.os != 'Windows'
+        run: |
+          ./scripts/check-env.sh > saida.txt 2>&1 || true
+          cat saida.txt
+          grep -q "\[OK\]    git" saida.txt
