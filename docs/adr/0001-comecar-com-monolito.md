@@ -1,7 +1,8 @@
 # ADR 0001: Começar a PagUai como um monólito
 
 - **Status:** aceita (2019, decisão fictícia)
-- **Decisores:** Helena Rocha (CTO)
+- **Proposta e aprovação:** Helena Rocha, hoje Coordenadora de Arquitetura
+- **Observação:** decisão herdada, tomada antes da chegada do(a) novo(a) arquiteto(a). A partir do ADR 0002, quem propõe e escreve é você; a Helena revisa e aprova.
 
 ## Contexto
 
