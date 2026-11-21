@@ -1,30 +1,25 @@
-using Microsoft.EntityFrameworkCore;
-using PagUai.Api.Infra;
+using PagUai.Api.Compartilhado;
 using PagUai.Api.Modulos.Antifraude;
 using PagUai.Api.Modulos.Cobrancas;
 using PagUai.Api.Modulos.Contas;
 using PagUai.Api.Modulos.Extrato;
 using PagUai.Api.Modulos.Notificacoes;
-using PagUai.Api.Modulos.Transferencias;
+using PagUai.Api.Modulos.Pagamentos;
 using Scalar.AspNetCore;
 
 // PagUai: fintech FICTÍCIA usada na disciplina "Arquitetura de Microsserviços e APIs".
-// Sprint 0: um MONÓLITO. Um processo, um deploy, um banco.
+// Sprint 1: um MONÓLITO MODULAR. Ainda um processo, um deploy e um banco, mas agora cada módulo
+// tem um contrato público, um DbContext e um schema só seus. Os testes de arquitetura garantem
+// que nenhum módulo usa o interior de outro.
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddDbContext<PagUaiDbContext>(o =>
-    o.UseNpgsql(builder.Configuration.GetConnectionString("PagUai"))
-     .UseSnakeCaseNamingConvention());
-
-builder.Services.Configure<AntifraudeOptions>(builder.Configuration.GetSection("Antifraude"));
-builder.Services.Configure<NotificacaoOptions>(builder.Configuration.GetSection("Notificacoes"));
-
-builder.Services.AddScoped<AntifraudeService>();
-builder.Services.AddScoped<NotificacaoService>();
-builder.Services.AddScoped<TransferenciaService>();
-
-builder.Services.AddProblemDetails();
-builder.Services.AddExceptionHandler<TratadorDeErros>();
+builder.Services.AddCompartilhado();
+builder.Services.AddModuloContas();
+builder.Services.AddModuloPagamentos();
+builder.Services.AddModuloCobrancas();
+builder.Services.AddModuloAntifraude(builder.Configuration);
+builder.Services.AddModuloExtrato();
+builder.Services.AddModuloNotificacoes(builder.Configuration);
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
@@ -32,24 +27,38 @@ var app = builder.Build();
 app.UseExceptionHandler();
 
 app.MapOpenApi();
-app.MapScalarApiReference(o => o.WithTitle("PagUai API (monólito)"));
+app.MapScalarApiReference(o => o.WithTitle("PagUai API (monólito modular)"));
 app.MapGet("/", () => Results.Redirect("/scalar")).ExcludeFromDescription();
 
-app.MapGet("/health", async (PagUaiDbContext db, CancellationToken ct) =>
-        await db.Database.CanConnectAsync(ct)
-            ? Results.Ok(new { status = "saudavel", banco = "ok" })
-            : Results.Json(new { status = "degradado", banco = "indisponivel" }, statusCode: StatusCodes.Status503ServiceUnavailable))
+app.MapGet("/health", async (UnidadeDeTrabalho unidade, CancellationToken ct) =>
+    {
+        try
+        {
+            await unidade.Conexao.OpenAsync(ct);
+            return Results.Ok(new { status = "saudavel", banco = "ok" });
+        }
+        catch (Exception)
+        {
+            return Results.Json(new { status = "degradado", banco = "indisponivel" }, statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+    })
     .WithTags("Infra")
     .WithSummary("Verifica se a API e o banco estão no ar");
 
-app.MapContas();
-app.MapTransferencias();
-app.MapCobrancas();
-app.MapExtrato();
+app.MapModuloContas();
+app.MapModuloPagamentos();
+app.MapModuloCobrancas();
+app.MapModuloExtrato();
 
 if (!app.Configuration.GetValue<bool>("PularPreparacaoDoBanco"))
 {
-    await BancoDeDados.PrepararAsync(app.Services);
+    // Cada módulo cria e atualiza o SEU schema.
+    await ModuloContas.MigrarAsync(app.Services);
+    await ModuloPagamentos.MigrarAsync(app.Services);
+    await ModuloCobrancas.MigrarAsync(app.Services);
+    await ModuloAntifraude.MigrarAsync(app.Services);
+    await ModuloNotificacoes.MigrarAsync(app.Services);
+    await ModuloContas.InserirDadosIniciaisAsync(app.Services);
 }
 
 app.Run();

@@ -1,4 +1,4 @@
-using PagUai.Api.Modulos.Antifraude;
+using PagUai.Api.Modulos.Antifraude.Interno;
 
 namespace PagUai.Api.Tests;
 

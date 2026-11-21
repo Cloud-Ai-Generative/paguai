@@ -44,13 +44,15 @@ jobs:
           docker compose logs api
           exit 1
 
-      - name: Teste de fumaça (transferência PIX simulada)
+      - name: Teste de fumaça (transferência PIX simulada e saldo)
         run: |
           ANA=$(curl -fs http://localhost:8080/contas | jq -r '.[] | select(.titular | startswith("Ana")) | .id')
           curl -fs -X POST http://localhost:8080/transferencias \
             -H 'content-type: application/json' \
             -d "{\"contaOrigemId\":\"$ANA\",\"chavePixDestino\":\"loja.geraldo@paguai.local\",\"valor\":10}"
           curl -fs http://localhost:8025/api/v1/messages | jq '.total'
+          echo "Saldo da Ana (módulo Pagamentos):"
+          curl -fs http://localhost:8080/saldos/$ANA | jq '.saldo'
 
       - name: Logs da API sem avisos conhecidos
         run: |

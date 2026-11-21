@@ -1,4 +1,4 @@
-# PagUai, Sprint 0: o monólito.
+# PagUai, Sprint 1: o monólito modular (um processo, um banco, um schema por módulo).
 # Sobe tudo com:  docker compose up -d --build
 #   API + documentação (Scalar): http://localhost:8080
 #   Caixa de e-mails (Mailpit):  http://localhost:8025
