@@ -1,4 +1,4 @@
-### PagUai: requisições prontas para o laboratório da Sprint 0
+### PagUai: requisições prontas para o laboratório da Sprint 1 (monólito modular)
 ### Use com a extensão REST Client do VS Code (clique em "Send Request" acima de cada bloco).
 
 @api = http://localhost:8080
@@ -6,12 +6,16 @@
 ### 1. A API está no ar?
 GET {{api}}/health
 
-### 2. Listar as contas fictícias (copie o id da Ana para a variável abaixo)
+### 2. Listar as contas fictícias (módulo Contas). Repare: não há mais saldo aqui.
+### Copie o id da Ana para a variável abaixo.
 GET {{api}}/contas
 
 @ana = COLE_AQUI_O_ID_DA_ANA
 
-### 3. PIX simulado da Ana para a loja do Seu Geraldo
+### 3. Saldo da Ana: agora pertence ao módulo Pagamentos
+GET {{api}}/saldos/{{ana}}
+
+### 4. PIX simulado da Ana para a loja do Seu Geraldo (Pagamentos usa Contas, Antifraude e Notificações pelos contratos)
 POST {{api}}/transferencias
 Content-Type: application/json
 
@@ -21,7 +25,7 @@ Content-Type: application/json
   "valor": 150.00
 }
 
-### 4. Valor acima do limite: o antifraude reprova
+### 5. Valor acima do limite: o antifraude reprova
 POST {{api}}/transferencias
 Content-Type: application/json
 
@@ -31,5 +35,28 @@ Content-Type: application/json
   "valor": 6000.00
 }
 
-### 5. Extrato da Ana (últimos 30 dias)
+### 6. Extrato da Ana (módulo Extrato, só leitura: pergunta a Contas e a Pagamentos)
 GET {{api}}/contas/{{ana}}/extrato
+
+
+### 7. A loja do Seu Geraldo cria uma cobrança (cole o id da loja abaixo)
+@loja = COLE_AQUI_O_ID_DA_LOJA
+
+POST {{api}}/cobrancas
+Content-Type: application/json
+
+{
+  "contaRecebedoraId": "{{loja}}",
+  "valor": 42.00,
+  "descricao": "Queijo canastra meia cura"
+}
+
+### 8. A Ana paga a cobrança (cole o id da cobrança criada acima)
+@cobranca = COLE_AQUI_O_ID_DA_COBRANCA
+
+POST {{api}}/cobrancas/{{cobranca}}/pagar
+Content-Type: application/json
+
+{
+  "contaPagadoraId": "{{ana}}"
+}
