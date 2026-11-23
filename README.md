@@ -10,7 +10,7 @@ Projeto prático da disciplina **Arquitetura de Microsserviços e APIs** (Pós-g
 
 A PagUai é uma fintech mineira fundada em 2019 em Belo Horizonte ("Pagamento sem complicação, uai!"). Começou como um **monólito**, decisão correta para a época (veja o [ADR 0001](docs/adr/0001-comecar-com-monolito.md)). Hoje precisa crescer sem parar de funcionar. Você é o(a) arquiteto(a) recém-contratado(a) para conduzir essa evolução: você propõe as decisões e escreve os ADRs; a Helena, Coordenadora de Arquitetura, revisa e aprova.
 
-## Sprint 2: Strangler Fig, o primeiro serviço sai do monólito
+## Sprint 2: Strangler Fig e API First: o primeiro serviço sai do monólito
 
 Um **gateway** (YARP) passa a ser a porta de entrada. O endereço continua o mesmo (`http://localhost:8080`), mas agora o gateway decide quem atende: a rota do extrato vai para o **serviço de Extrato**, o primeiro extraído do monólito; todo o resto continua no monólito modular.
 
@@ -142,7 +142,7 @@ Portas configuráveis: `PAGUAI_API_PORT` (gateway, 8080), `PAGUAI_MONOLITO_PORT`
 | ~~Módulos mexem nas tabelas uns dos outros~~ | Resolvida: cada módulo tem contrato, DbContext e schema próprios, verificados pelos testes de arquitetura | Sprint 1 ✅ |
 | ~~Um deploy do Extrato derruba o checkout~~ | Resolvida: o Extrato é um serviço com deploy próprio; com ele parado, o PIX continua (`docker compose stop extrato`) | Sprint 2 ✅ |
 | Extrato sem timeout ao chamar o monólito | `docker compose pause api` e consulte o extrato: a requisição fica pendurada por até 100 s. Depois, `docker compose unpause api` | Sprint 9 |
-| Notificação dentro da transação (continua, mesmo com módulos) | `Notificacoes__SimularFalha=true` no `docker-compose.yml`: a transferência falha junto | Sprint 3 |
+| Notificação dentro da transação (continua, mesmo com módulos) | `Notificacoes__SimularFalha=true` no `docker-compose.yml`: o PIX falha junto | Sprint 3 |
 | Antifraude lento trava tudo | Aumente `Antifraude__LatenciaMs` | Sprints 6 e 9 |
 | Extrato sem autenticação (BOLA) | Qualquer id abre o extrato de qualquer conta | Sprints 11 e 12 |
 
