@@ -1,16 +1,18 @@
-# PagUai, Sprint 2: Strangler Fig. O gateway fica na frente; a rota do extrato vai para o
-# primeiro serviço extraído do monólito.
+# PagUai, Sprint 3: mensageria. O monólito publica eventos no RabbitMQ; Notificações e Extrato consomem.
 # Sobe tudo com:  docker compose up -d --build
 #   Porta de entrada (gateway YARP):           http://localhost:8080
 #   Monólito modular, direto (Scalar):          http://localhost:8081
 #   Serviço de Extrato, direto (Scalar):        http://localhost:8082
+#   Interface do RabbitMQ (paguai / paguai_dev_123): http://localhost:15672
 #   Caixa de e-mails (Mailpit):                 http://localhost:8025
 #   Mock do contrato do Extrato (Prism):        docker compose --profile mock up -d  →  http://localhost:4010
+#
+# Vindo da Sprint 2? Comece limpo:  docker compose down -v  (apaga o volume do banco; os dados são fictícios)
 #
 # Porta ocupada na sua máquina? Troque sem editar este arquivo, por exemplo:
 #   PAGUAI_API_PORT=9080 docker compose up -d
 # Variáveis: PAGUAI_API_PORT, PAGUAI_MONOLITO_PORT, PAGUAI_EXTRATO_PORT, PAGUAI_DB_PORT,
-#            PAGUAI_MAIL_UI_PORT, PAGUAI_SMTP_PORT, PAGUAI_MOCK_PORT
+#            PAGUAI_RABBITMQ_PORT, PAGUAI_RABBITMQ_UI_PORT, PAGUAI_MAIL_UI_PORT, PAGUAI_SMTP_PORT, PAGUAI_MOCK_PORT
 
 services:
   gateway:
@@ -25,10 +27,6 @@ services:
     environment:
       Destinos__Monolito: "http://api:8080"
       Destinos__Extrato: "http://extrato:8080"
-      # Strangler Fig: para onde vai GET /contas/{id}/extrato?
-      #   "servico"  → serviço de Extrato (novo)
-      #   "monolito" → Extrato antigo, dentro do monólito (voltar atrás sem mudar código)
-      Strangler__Extrato: "servico"
     depends_on:
       - api
       - extrato
@@ -44,17 +42,15 @@ services:
       - "${PAGUAI_MONOLITO_PORT:-8081}:8080"
     environment:
       ConnectionStrings__PagUai: "Host=postgres;Port=5432;Database=paguai;Username=paguai;Password=paguai_dev_123;Gss Encryption Mode=Disable"
-      Notificacoes__SmtpHost: "mailpit"
-      Notificacoes__SmtpPort: "1025"
-      # Mude para "true" para ver a dor da Sprint 3 (falha na notificação derruba a transferência).
-      Notificacoes__SimularFalha: "false"
+      # Sprint 3: o monólito publica ContaAberta e PagamentoAprovado na exchange paguai.eventos.
+      ConnectionStrings__RabbitMq: "amqp://paguai:paguai_dev_123@rabbitmq:5672"
       # Aumente para ver o monólito inteiro ficar lento (Sprints 6 e 9).
       Antifraude__LatenciaMs: "300"
     depends_on:
       postgres:
         condition: service_healthy
-      mailpit:
-        condition: service_started
+      rabbitmq:
+        condition: service_healthy
 
   extrato:
     build:
@@ -66,8 +62,58 @@ services:
     ports:
       - "${PAGUAI_EXTRATO_PORT:-8082}:8080"
     environment:
-      # O Extrato não tem banco: pergunta ao monólito (Contas e Pagamentos) por HTTP.
-      Monolito__Url: "http://api:8080"
+      # Sprint 3: o Extrato tem banco próprio (database extrato), montado com os eventos da fila extrato.
+      # Ele não chama mais o monólito.
+      ConnectionStrings__Extrato: "Host=postgres;Port=5432;Database=extrato;Username=paguai;Password=paguai_dev_123;Gss Encryption Mode=Disable"
+      ConnectionStrings__RabbitMq: "amqp://paguai:paguai_dev_123@rabbitmq:5672"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  # Sprint 3: o serviço de Notificações (Worker Service, sem porta HTTP). Consome a fila notificacoes.
+  notificacoes:
+    build:
+      context: .
+      args:
+        PROJETO: PagUai.Notificacoes
+    container_name: paguai-notificacoes
+    restart: unless-stopped
+    environment:
+      ConnectionStrings__Notificacoes: "Host=postgres;Port=5432;Database=notificacoes;Username=paguai;Password=paguai_dev_123;Gss Encryption Mode=Disable"
+      ConnectionStrings__RabbitMq: "amqp://paguai:paguai_dev_123@rabbitmq:5672"
+      Notificacoes__SmtpHost: "mailpit"
+      Notificacoes__SmtpPort: "1025"
+      # Mude para "true" e rode  docker compose up -d notificacoes  para ver retry e dead letter.
+      # Até a Sprint 2, esta falha desfazia o PIX. Agora o PIX conclui e o e-mail espera na fila.
+      Notificacoes__SimularFalha: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: paguai-rabbitmq
+    hostname: paguai-rabbitmq   # o RabbitMQ guarda os dados pelo nome do host; fixo, para não "esquecer" as filas
+    ports:
+      - "${PAGUAI_RABBITMQ_PORT:-5672}:5672"     # AMQP (os serviços)
+      - "${PAGUAI_RABBITMQ_UI_PORT:-15672}:15672" # interface web
+    volumes:
+      # Usuário, exchange, filas e ligações criados ao subir. Veja infra/rabbitmq/definitions.json.
+      - ./infra/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ./infra/rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
+      - ./infra/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+      - paguai-mensagens:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
 
   postgres:
     image: postgres:17-alpine
@@ -108,3 +154,4 @@ services:
 
 volumes:
   paguai-dados:
+  paguai-mensagens:

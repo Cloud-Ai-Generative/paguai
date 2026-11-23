@@ -1,0 +1,129 @@
+{
+  "vhosts": [
+    {
+      "name": "/"
+    }
+  ],
+  "users": [
+    {
+      "name": "paguai",
+      "password_hash": "EvPSjG+bSnjgjxLP/wdZDCRDgHnFjfL4dgdFWNEmUw1qVFjc",
+      "hashing_algorithm": "rabbit_password_hashing_sha256",
+      "tags": [
+        "administrator"
+      ]
+    }
+  ],
+  "permissions": [
+    {
+      "user": "paguai",
+      "vhost": "/",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    }
+  ],
+  "exchanges": [
+    {
+      "name": "paguai.eventos",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+  "queues": [
+    {
+      "name": "notificacoes",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "notificacoes.dlq"
+      }
+    },
+    {
+      "name": "notificacoes.retry",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-message-ttl": 5000,
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "notificacoes"
+      }
+    },
+    {
+      "name": "notificacoes.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum"
+      }
+    },
+    {
+      "name": "extrato",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "extrato.dlq"
+      }
+    },
+    {
+      "name": "extrato.retry",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-message-ttl": 5000,
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "extrato"
+      }
+    },
+    {
+      "name": "extrato.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum"
+      }
+    }
+  ],
+  "bindings": [
+    {
+      "source": "paguai.eventos",
+      "vhost": "/",
+      "destination": "notificacoes",
+      "destination_type": "queue",
+      "routing_key": "pagamento.aprovado",
+      "arguments": {}
+    },
+    {
+      "source": "paguai.eventos",
+      "vhost": "/",
+      "destination": "extrato",
+      "destination_type": "queue",
+      "routing_key": "conta.aberta",
+      "arguments": {}
+    },
+    {
+      "source": "paguai.eventos",
+      "vhost": "/",
+      "destination": "extrato",
+      "destination_type": "queue",
+      "routing_key": "pagamento.aprovado",
+      "arguments": {}
+    }
+  ]
+}

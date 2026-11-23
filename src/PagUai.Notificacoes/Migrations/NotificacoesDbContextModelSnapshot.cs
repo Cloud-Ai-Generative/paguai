@@ -4,11 +4,11 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
-using PagUai.Api.Modulos.Notificacoes.Interno;
+using PagUai.Notificacoes;
 
 #nullable disable
 
-namespace PagUai.Api.Modulos.Notificacoes.Interno.Migrations
+namespace PagUai.Notificacoes.Migrations
 {
     [DbContext(typeof(NotificacoesDbContext))]
     partial class NotificacoesDbContextModelSnapshot : ModelSnapshot
@@ -17,13 +17,35 @@ namespace PagUai.Api.Modulos.Notificacoes.Interno.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasDefaultSchema("notificacoes")
                 .HasAnnotation("ProductVersion", "10.0.14")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("PagUai.Api.Modulos.Notificacoes.Interno.Notificacao", b =>
+            modelBuilder.Entity("PagUai.Notificacoes.EventoProcessado", b =>
+                {
+                    b.Property<Guid>("EventoId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("evento_id");
+
+                    b.Property<DateTime>("ProcessadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("processado_em");
+
+                    b.Property<string>("Tipo")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("tipo");
+
+                    b.HasKey("EventoId")
+                        .HasName("pk_eventos_processados");
+
+                    b.ToTable("eventos_processados", (string)null);
+                });
+
+            modelBuilder.Entity("PagUai.Notificacoes.Notificacao", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -34,9 +56,19 @@ namespace PagUai.Api.Modulos.Notificacoes.Interno.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("conta_id");
 
+                    b.Property<string>("Destinatario")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("destinatario");
+
                     b.Property<DateTime>("EnviadaEm")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("enviada_em");
+
+                    b.Property<Guid>("EventoId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("evento_id");
 
                     b.Property<string>("Mensagem")
                         .IsRequired()
@@ -47,7 +79,10 @@ namespace PagUai.Api.Modulos.Notificacoes.Interno.Migrations
                     b.HasKey("Id")
                         .HasName("pk_notificacoes");
 
-                    b.ToTable("notificacoes", "notificacoes");
+                    b.HasIndex("EventoId")
+                        .HasDatabaseName("ix_notificacoes_evento_id");
+
+                    b.ToTable("notificacoes", (string)null);
                 });
 #pragma warning restore 612, 618
         }

@@ -1,50 +1,47 @@
 # ADR 0004: Como extrair o Extrato (Strangler Fig, gateway e contrato)
 
-> **Modelo para você preencher (Sprint 2).** Use a ata da **Sala de Contrato** (ODA, aba Sprint 2) como ponto de partida: ela já traz as decisões do contrato. Responda às perguntas-guia, apague as perguntas e faça o commit no seu fork. Depois compare com a versão aprovada pela Helena, na ODA.
-
-- **Status:** proposta
-- **Proposto por:** _(seu nome)_, arquiteto(a)
+- **Status:** aceita (Sprint 2)
+- **Proposto por:** o(a) arquiteto(a) do time (você, na Sprint 2)
 - **Participantes:** Lívia Andrade (front-end, representante dos consumidores da API), Joana Lima (Product Owner), Rafa Souza (Tech Lead)
 - **Revisão e aprovação:** Helena Rocha, Coordenadora de Arquitetura
-- **Data:** _(data de hoje)_
+
+> Esta é a versão aprovada. Compare com a sua proposta da Sprint 2.
 
 ## Contexto
 
-_Perguntas-guia:_
-- _O ADR 0003 decidiu que o Extrato sai primeiro. Que restrições existem? (Dica: o app já usa o extrato do monólito.)_
-- _Por que não dá para desligar o Extrato antigo e ligar o novo de uma vez?_
+O ADR 0003 decidiu extrair o Extrato primeiro. O app e o portal do lojista já usam `GET /contas/{id}/extrato` do monólito, então a troca precisa ser **invisível** para quem consome e **reversível** se o serviço novo falhar.
 
 ## Decisão
 
-_Perguntas-guia:_
-- _Como o tráfego passa do monólito para o serviço novo? Quem decide para onde vai cada rota?_
-- _Como voltar atrás se o serviço novo der problema?_
-- _De onde o Extrato tira os dados, se ele não tem banco?_
-- _O contrato veio antes ou depois do código? Por quê?_
+Um gateway (YARP) passa a ser a porta de entrada e desvia só a rota do extrato para o serviço novo. A configuração `Strangler__Extrato` permite voltar ao Extrato antigo sem mudar código.
+
+O serviço nasce **contract-first**: o contrato foi combinado com a Lívia na Sala de Contrato, publicado como mock (Prism) e verificado no código por testes de contrato e pelo lint no CI. O Extrato não tem banco: consulta Contas e Pagamentos pela API do monólito.
 
 ### Decisões do contrato (da Sala de Contrato)
 
-| Tema | Decisão | Por quê |
-| --- | --- | --- |
-| Valores em dinheiro | | |
-| Paginação | | |
-| Período padrão e máximo | | |
-| Saldo no extrato | | |
-| Formato dos erros | | |
-| Versão | | |
-| Segurança | | |
+| Tema | Decisão |
+| --- | --- |
+| Valores em dinheiro | Número com duas casas decimais, como o app já lê; texto fica como candidato para a Sprint 7 |
+| Saldo | Dentro do extrato, com o momento da consulta (`saldoEm`) |
+| Paginação | Cursor opcional; sem `limite`, até 100 lançamentos |
+| Período | Padrão de 30 dias e máximo de 90, com 422 |
+| Erros | Problem Details (RFC 9457) com um `type` por erro; 503 quando uma dependência cair |
+| Versão | Sem prefixo: só mudanças que não quebram |
+| Segurança | Declarada no contrato como vulnerabilidade proposital até a Sprint 11 |
 
 ## Alternativas consideradas
 
 | Alternativa | Por que não agora |
 | --- | --- |
-| _(por exemplo: trocar tudo de uma vez, sem gateway)_ | _..._ |
-| _(por exemplo: o Extrato com o próprio banco, alimentado por eventos)_ | _..._ |
-| _(por exemplo: contrato gerado a partir do código)_ | _..._ |
+| Trocar a URL no app | Rejeitada: não há como voltar atrás sem uma nova versão do app. |
+| Desviar só uma parte do tráfego (canary) | Válida; adiada até haver métricas por versão (Sprint 10). |
+| O Extrato com banco próprio, alimentado por eventos | Adiada: depende da mensageria (Sprint 3). |
+| Contrato gerado a partir do código | Rejeitada para um serviço novo: o consumidor só participaria depois. |
 
 ## Consequências
 
-_Perguntas-guia:_
-- _O que acontece com o PIX quando o Extrato cai? E com o Extrato quando o monólito cai?_
-- _Quantas chamadas de rede uma consulta de extrato faz agora? O que isso custa?_
-- _O que ficou de fora de propósito e volta em outra sprint (timeout, autenticação, versão)?_
+- Um deploy ou uma falha do Extrato não derruba mais o PIX.
+- Em troca, cada consulta faz três chamadas HTTP ao monólito, e o Extrato depende dele: com o monólito fora, responde 503; com o monólito lento, fica esperando, porque ainda não há timeout (dor proposital).
+- O Extrato antigo será apagado do monólito na Sprint 3.
+
+> **Atualização (Sprint 3, ADR 0005):** a alternativa adiada foi adotada. O Extrato passou a ter banco próprio, alimentado por eventos, e não chama mais o monólito. O Extrato antigo e a configuração `Strangler__Extrato` foram apagados.

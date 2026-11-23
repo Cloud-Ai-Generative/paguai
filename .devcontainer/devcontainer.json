@@ -12,6 +12,7 @@
     8081,
     8082,
     8025,
+    15672,
     4010
   ],
   "portsAttributes": {
@@ -26,6 +27,9 @@
     },
     "8025": {
       "label": "Mailpit"
+    },
+    "15672": {
+      "label": "RabbitMQ (interface)"
     },
     "4010": {
       "label": "Mock do contrato (Prism)"

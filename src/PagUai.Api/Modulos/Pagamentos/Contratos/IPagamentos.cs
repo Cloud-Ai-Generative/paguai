@@ -12,7 +12,7 @@ public record PaginaDeMovimentos(IReadOnlyList<Movimento> Itens, string? Proximo
 
 public interface IPagamentos
 {
-    /// <summary>Transfere por chave PIX simulada: passa pelo antifraude, movimenta os saldos e notifica as duas contas.</summary>
+    /// <summary>Transfere por chave PIX simulada: passa pelo antifraude, movimenta os saldos e publica PagamentoAprovado.</summary>
     Task<TransferenciaRealizada> TransferirAsync(Guid contaOrigemId, string chavePixDestino, decimal valor, string descricao, CancellationToken ct);
 
     Task<decimal?> ObterSaldoAsync(Guid contaId, CancellationToken ct);

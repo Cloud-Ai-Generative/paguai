@@ -1,9 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
-using Microsoft.AspNetCore.Hosting;
 using PagUai.Api.Modulos.Cobrancas.Interno;
 using PagUai.Api.Modulos.Contas.Interno;
-using PagUai.Api.Modulos.Extrato.Interno;
 using PagUai.Api.Modulos.Pagamentos.Interno;
 
 namespace PagUai.Api.Tests;
@@ -35,7 +33,7 @@ public class PagamentosTests(PagUaiApiFactory factory) : IClassFixture<PagUaiApi
     }
 
     [Fact]
-    public async Task Transferencia_movimenta_saldos_e_gera_extrato()
+    public async Task Transferencia_movimenta_saldos()
     {
         var ct = TestContext.Current.CancellationToken;
         var origem = await AbrirContaAsync(_http, 500m);
@@ -45,9 +43,7 @@ public class PagamentosTests(PagUaiApiFactory factory) : IClassFixture<PagUaiApi
 
         Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
         Assert.Equal(380m, await SaldoAsync(origem.Id));
-        var extrato = await _http.GetFromJsonAsync<ExtratoResponse>($"/contas/{destino.Id}/extrato", ct);
-        Assert.Equal(120m, extrato!.SaldoAtual);
-        Assert.Single(extrato.Lancamentos);
+        Assert.Equal(120m, await SaldoAsync(destino.Id));
     }
 
     [Fact]
@@ -92,7 +88,7 @@ public class PagamentosTests(PagUaiApiFactory factory) : IClassFixture<PagUaiApi
         Assert.Equal(60m, await SaldoAsync(cliente.Id));
     }
 
-    /// <summary>Sprint 2: o serviço de Extrato pagina os movimentos por cursor, pelo endpoint de Pagamentos.</summary>
+    /// <summary>Movimentos paginados por cursor (criado na Sprint 2 para o Extrato; continua no monólito).</summary>
     [Fact]
     public async Task Movimentos_sao_paginados_por_cursor_sem_repetir_itens()
     {
@@ -125,26 +121,5 @@ public class PagamentosTests(PagUaiApiFactory factory) : IClassFixture<PagUaiApi
         var resp = await _http.GetAsync($"/pagamentos/contas/{conta.Id}/movimentos?de=2026-01-01T00:00:00Z&ate=2030-01-01T00:00:00Z&cursor=lixo", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, resp.StatusCode);
-    }
-
-    /// <summary>
-    /// Documenta a DOR da Sprint 3, que a Sprint 1 NÃO resolve: com a notificação dentro da
-    /// transação, uma falha no e-mail desfaz a transferência inteira, mesmo com módulos separados.
-    /// </summary>
-    [Fact]
-    public async Task Falha_na_notificacao_desfaz_a_transferencia()
-    {
-        var ct = TestContext.Current.CancellationToken;
-        var origem = await AbrirContaAsync(_http, 300m);
-        var destino = await AbrirContaAsync(_http, 0m);
-
-        using var comFalha = factory
-            .WithWebHostBuilder(b => b.UseSetting("Notificacoes:SimularFalha", "true"))
-            .CreateClient();
-        var resp = await comFalha.PostAsJsonAsync("/transferencias", new TransferirRequest(origem.Id, destino.ChavePix, 100m), ct);
-
-        Assert.Equal(HttpStatusCode.InternalServerError, resp.StatusCode);
-        Assert.Equal(300m, await SaldoAsync(origem.Id));
-        Assert.Equal(0m, await SaldoAsync(destino.Id));
     }
 }

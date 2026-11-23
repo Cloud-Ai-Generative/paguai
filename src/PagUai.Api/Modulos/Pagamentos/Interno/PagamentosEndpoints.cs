@@ -21,7 +21,7 @@ public static class PagamentosEndpoints
         })
         .WithTags("Pagamentos (PIX simulado)")
         .WithName("Transferir")
-        .WithSummary("Transfere por chave PIX simulada (passa pelo antifraude e notifica as duas contas)");
+        .WithSummary("Transfere por chave PIX simulada (passa pelo antifraude e publica o evento PagamentoAprovado)");
 
         app.MapGet("/saldos/{contaId:guid}", async (Guid contaId, IPagamentos pagamentos, CancellationToken ct) =>
         {
@@ -32,7 +32,9 @@ public static class PagamentosEndpoints
         .WithName("ConsultarSaldo")
         .WithSummary("Consulta o saldo de uma conta (o saldo pertence ao contexto de Pagamentos)");
 
-        // Sprint 2: usado pelo serviço de Extrato, que agora roda fora do monólito.
+        // Sprint 2: criado para o serviço de Extrato consultar os movimentos por HTTP.
+        // Sprint 3: o Extrato passou a montar os próprios dados com eventos e não usa mais esta rota.
+        // Ela continua no monólito até que nenhum consumidor dependa dela (Sprint 13, ciclo de vida de APIs).
         app.MapGet("/pagamentos/contas/{contaId:guid}/movimentos", async (Guid contaId, DateTime de, DateTime ate,
             int? limite, string? cursor, IPagamentos pagamentos, CancellationToken ct) =>
         {
@@ -44,6 +46,6 @@ public static class PagamentosEndpoints
         })
         .WithTags("Pagamentos (uso interno)")
         .WithName("ListarMovimentos")
-        .WithSummary("Movimentos de uma conta no período, paginados por cursor (usado pelo serviço de Extrato)");
+        .WithSummary("Movimentos de uma conta no período, paginados por cursor");
     }
 }
