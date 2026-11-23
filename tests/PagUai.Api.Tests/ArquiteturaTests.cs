@@ -6,7 +6,6 @@ using PagUai.Api.Compartilhado;
 using PagUai.Api.Modulos.Antifraude.Interno;
 using PagUai.Api.Modulos.Cobrancas.Interno;
 using PagUai.Api.Modulos.Contas.Interno;
-using PagUai.Api.Modulos.Notificacoes.Interno;
 using PagUai.Api.Modulos.Pagamentos.Interno;
 
 namespace PagUai.Api.Tests;
@@ -23,7 +22,8 @@ public class ArquiteturaTests
     private static readonly Assembly Api = typeof(Program).Assembly;
     private const string Raiz = "PagUai.Api.Modulos";
 
-    private static readonly string[] NomesDosModulos = ["Contas", "Pagamentos", "Cobrancas", "Antifraude", "Extrato", "Notificacoes"];
+    // Sprint 3: Extrato e Notificações saíram do monólito (são serviços próprios).
+    private static readonly string[] NomesDosModulos = ["Contas", "Pagamentos", "Cobrancas", "Antifraude"];
 
     public static TheoryData<string> Modulos => new(NomesDosModulos);
 
@@ -84,8 +84,7 @@ public class ArquiteturaTests
             new ContasDbContext(Opcoes<ContasDbContext>(unidade), unidade),
             new PagamentosDbContext(Opcoes<PagamentosDbContext>(unidade), unidade),
             new CobrancasDbContext(Opcoes<CobrancasDbContext>(unidade), unidade),
-            new AntifraudeDbContext(Opcoes<AntifraudeDbContext>(unidade), unidade),
-            new NotificacoesDbContext(Opcoes<NotificacoesDbContext>(unidade), unidade)
+            new AntifraudeDbContext(Opcoes<AntifraudeDbContext>(unidade), unidade)
         ];
 
         foreach (var contexto in contextos)
@@ -98,6 +97,34 @@ public class ArquiteturaTests
 
         var schemas = contextos.Select(c => c.Schema).ToList();
         Assert.Equal(schemas.Count, schemas.Distinct().Count());
+    }
+
+    /// <summary>
+    /// Sprint 3: os módulos não falam com o RabbitMQ diretamente. Eles usam
+    /// <see cref="EventosDeIntegracao"/>, que garante a publicação só depois do commit.
+    /// </summary>
+    [Fact]
+    public void Modulos_nao_usam_o_broker_diretamente()
+    {
+        var resultado = Types.InAssembly(Api)
+            .That().ResideInNamespace(Raiz)
+            .ShouldNot().HaveDependencyOnAny("RabbitMQ.Client", "PagUai.Mensageria")
+            .GetResult();
+
+        Assert.True(resultado.IsSuccessful,
+            $"Módulos usando o broker diretamente: {string.Join(", ", resultado.FailingTypeNames ?? [])}. Use EventosDeIntegracao.");
+    }
+
+    /// <summary>Sprint 3: e-mail é com o serviço de Notificações. O monólito não pode voltar a enviar.</summary>
+    [Fact]
+    public void Monolito_nao_envia_email()
+    {
+        var resultado = Types.InAssembly(Api)
+            .ShouldNot().HaveDependencyOnAny("MailKit", "MimeKit", "System.Net.Mail")
+            .GetResult();
+
+        Assert.True(resultado.IsSuccessful,
+            $"O monólito voltou a enviar e-mail em: {string.Join(", ", resultado.FailingTypeNames ?? [])}.");
     }
 
     private static DbContextOptions<T> Opcoes<T>(UnidadeDeTrabalho unidade) where T : DbContext =>

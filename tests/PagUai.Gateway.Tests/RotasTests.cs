@@ -1,50 +1,32 @@
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Yarp.ReverseProxy.Configuration;
 
 namespace PagUai.Gateway.Tests;
 
-/// <summary>Strangler Fig: a configuração decide para onde vai a rota do extrato.</summary>
+/// <summary>
+/// Sprint 3: o Strangler Fig do Extrato terminou. A rota do extrato vai sempre para o serviço novo.
+/// (Na Sprint 2, uma configuração decidia o destino; veja a tag sprint-02.)
+/// </summary>
 public class RotasTests
 {
-    private static IProxyConfig ConfiguracaoCom(string? strangler)
+    private static IProxyConfig Configuracao()
     {
-        using var fabrica = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
-        {
-            if (strangler is not null)
-            {
-                b.UseSetting("Strangler:Extrato", strangler);
-            }
-        });
+        using var fabrica = new WebApplicationFactory<Program>();
         return fabrica.Services.GetRequiredService<IProxyConfigProvider>().GetConfig();
     }
 
-    [Theory]
-    [InlineData(null, "extrato")]
-    [InlineData("servico", "extrato")]
-    [InlineData("monolito", "monolito")]
-    public void Rota_do_extrato_segue_a_configuracao(string? strangler, string destino)
-    {
-        var config = ConfiguracaoCom(strangler);
-
-        Assert.Equal(destino, config.Routes.Single(r => r.RouteId == "extrato").ClusterId);
-    }
+    [Fact]
+    public void Rota_do_extrato_vai_para_o_servico_de_Extrato() =>
+        Assert.Equal("extrato", Configuracao().Routes.Single(r => r.RouteId == "extrato").ClusterId);
 
     [Fact]
     public void Todo_o_resto_vai_para_o_monolito()
     {
-        var config = ConfiguracaoCom(null);
+        var config = Configuracao();
 
         var resto = config.Routes.Single(r => r.RouteId == "todo-o-resto");
         Assert.Equal("monolito", resto.ClusterId);
         Assert.True(resto.Order > config.Routes.Single(r => r.RouteId == "extrato").Order);
-    }
-
-    [Fact]
-    public void Valor_invalido_impede_o_gateway_de_subir()
-    {
-        var erro = Assert.ThrowsAny<Exception>(() => ConfiguracaoCom("talvez"));
-        Assert.Contains("Strangler:Extrato", erro.ToString());
     }
 }

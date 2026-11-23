@@ -1,0 +1,236 @@
+# Contrato dos EVENTOS da PagUai (empresa FICTÍCIA, fins didáticos).
+#
+# É o equivalente do contrato OpenAPI do Extrato, mas para mensagens: diz em que canal cada evento
+# é publicado, quem publica e qual é o formato. Quem publica (o monólito) e quem consome
+# (Notificações e Extrato) seguem este arquivo. Decisões no ADR 0005 (Sprint 3).
+#
+# Regras de evolução, iguais às da API REST: acrescentar campos não quebra ninguém (os consumidores
+# ignoram o que não conhecem); remover ou mudar o sentido de um campo exige uma nova `versao`.
+asyncapi: 3.0.0
+info:
+  title: PagUai · Eventos
+  version: 1.0.0
+  description: |
+    Eventos que a PagUai publica no RabbitMQ, na exchange `paguai.eventos` (tipo topic).
+
+    - Todo evento vem num ENVELOPE com `id`, `tipo`, `versao`, `ocorridoEm` e `dados`.
+    - O `id` é único: os consumidores usam o `id` para não processar o mesmo evento duas vezes
+      (a entrega é "pelo menos uma vez").
+    - O nome do evento está no passado, porque um evento é um fato que já aconteceu.
+    - Cada consumidor tem a sua fila, com retry (`<fila>.retry`) e dead letter (`<fila>.dlq`).
+  contact:
+    name: Time de Arquitetura da PagUai (fictício)
+defaultContentType: application/json
+
+servers:
+  laboratorio:
+    host: localhost:5672
+    protocol: amqp
+    protocolVersion: 0.9.1
+    description: RabbitMQ do Docker Compose (interface em http://localhost:15672).
+
+channels:
+  contaAberta:
+    address: conta.aberta
+    description: Uma conta foi aberta. Chave de roteamento `conta.aberta` na exchange `paguai.eventos`.
+    messages:
+      ContaAberta:
+        $ref: "#/components/messages/ContaAberta"
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: paguai.eventos
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: /
+        bindingVersion: 0.3.0
+  pagamentoAprovado:
+    address: pagamento.aprovado
+    description: Um PIX foi aprovado e já está gravado em Pagamentos. Chave `pagamento.aprovado` na exchange `paguai.eventos`.
+    messages:
+      PagamentoAprovado:
+        $ref: "#/components/messages/PagamentoAprovado"
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: paguai.eventos
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: /
+        bindingVersion: 0.3.0
+
+operations:
+  publicarContaAberta:
+    action: send
+    summary: Contas (no monólito) publica depois do commit da abertura da conta.
+    channel:
+      $ref: "#/channels/contaAberta"
+    messages:
+      - $ref: "#/channels/contaAberta/messages/ContaAberta"
+    bindings:
+      amqp:
+        deliveryMode: 2   # persistente
+        mandatory: true   # erro se nenhuma fila assinar a chave
+        bindingVersion: 0.3.0
+  publicarPagamentoAprovado:
+    action: send
+    summary: Pagamentos (no monólito) publica depois do commit do PIX.
+    channel:
+      $ref: "#/channels/pagamentoAprovado"
+    messages:
+      - $ref: "#/channels/pagamentoAprovado/messages/PagamentoAprovado"
+    bindings:
+      amqp:
+        deliveryMode: 2   # persistente
+        mandatory: true   # erro se nenhuma fila assinar a chave
+        bindingVersion: 0.3.0
+  extratoRecebeContaAberta:
+    action: receive
+    summary: O Extrato cria a conta no seu modelo de leitura (fila extrato).
+    channel:
+      $ref: "#/channels/contaAberta"
+    messages:
+      - $ref: "#/channels/contaAberta/messages/ContaAberta"
+  extratoRecebePagamentoAprovado:
+    action: receive
+    summary: O Extrato registra o débito e o crédito no seu modelo de leitura (fila extrato).
+    channel:
+      $ref: "#/channels/pagamentoAprovado"
+    messages:
+      - $ref: "#/channels/pagamentoAprovado/messages/PagamentoAprovado"
+  notificacoesRecebePagamentoAprovado:
+    action: receive
+    summary: Notificações avisa quem pagou e quem recebeu, por e-mail (fila notificacoes).
+    channel:
+      $ref: "#/channels/pagamentoAprovado"
+    messages:
+      - $ref: "#/channels/pagamentoAprovado/messages/PagamentoAprovado"
+
+components:
+  messages:
+    ContaAberta:
+      name: ContaAberta
+      title: Conta aberta
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/EnvelopeContaAberta"
+      bindings:
+        amqp:
+          messageType: ContaAberta
+          bindingVersion: 0.3.0
+      examples:
+        - name: Ana abre a conta
+          payload:
+            id: 5ace173a-994c-4a0a-b751-420814f495b1
+            tipo: ContaAberta
+            versao: 1
+            ocorridoEm: "2026-11-23T19:20:46.495Z"
+            dados:
+              contaId: 2a981875-052f-4076-abee-bf4e0b1a7abd
+              titular: Ana Clara Mendes
+              chavePix: ana.mendes@paguai.local
+              depositoInicial: 10000.00
+              abertaEm: "2026-11-23T19:20:46.495Z"
+    PagamentoAprovado:
+      name: PagamentoAprovado
+      title: Pagamento aprovado
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/EnvelopePagamentoAprovado"
+      bindings:
+        amqp:
+          messageType: PagamentoAprovado
+          bindingVersion: 0.3.0
+      examples:
+        - name: Ana paga R$ 50 ao Seu Geraldo
+          payload:
+            id: 9c609458-0808-4ed4-8609-b67dcc5a7134
+            tipo: PagamentoAprovado
+            versao: 1
+            ocorridoEm: "2026-11-23T19:20:54.639Z"
+            dados:
+              transferenciaId: 6d359e7a-9515-4615-884f-db78523d2a0a
+              contaOrigemId: 2a981875-052f-4076-abee-bf4e0b1a7abd
+              titularOrigem: Ana Clara Mendes
+              contaDestinoId: 7b2c6a10-3f1e-4d8a-9c55-0e6f1a2b3c4d
+              titularDestino: Loja do Seu Geraldo
+              chavePixDestino: loja.geraldo@paguai.local
+              valor: 50.00
+              descricao: PIX
+              aprovadoEm: "2026-11-23T19:20:54.639Z"
+
+  schemas:
+    Envelope:
+      type: object
+      required: [id, tipo, versao, ocorridoEm, dados]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Identificador único do evento. Use-o para ser idempotente.
+        tipo:
+          type: string
+          description: Nome do evento, no passado.
+        versao:
+          type: integer
+          minimum: 1
+          description: Versão do formato de `dados`.
+        ocorridoEm:
+          type: string
+          format: date-time
+          description: Quando o fato aconteceu (não quando a mensagem foi entregue).
+        dados:
+          type: object
+    EnvelopeContaAberta:
+      allOf:
+        - $ref: "#/components/schemas/Envelope"
+        - type: object
+          properties:
+            tipo: { const: ContaAberta }
+            versao: { const: 1 }
+            dados: { $ref: "#/components/schemas/ContaAbertaV1" }
+    EnvelopePagamentoAprovado:
+      allOf:
+        - $ref: "#/components/schemas/Envelope"
+        - type: object
+          properties:
+            tipo: { const: PagamentoAprovado }
+            versao: { const: 1 }
+            dados: { $ref: "#/components/schemas/PagamentoAprovadoV1" }
+    ContaAbertaV1:
+      type: object
+      required: [contaId, titular, chavePix, depositoInicial, abertaEm]
+      properties:
+        contaId: { type: string, format: uuid }
+        titular: { type: string }
+        chavePix: { type: string }
+        depositoInicial:
+          type: number
+          minimum: 0
+          description: Em reais, com duas casas decimais.
+        abertaEm: { type: string, format: date-time }
+    PagamentoAprovadoV1:
+      type: object
+      description: |
+        Leva o que os consumidores precisam (os titulares, por exemplo) para que eles não tenham de
+        perguntar de volta ao monólito. É isso que mantém Notificações e Extrato independentes dele.
+      required: [transferenciaId, contaOrigemId, titularOrigem, contaDestinoId, titularDestino, chavePixDestino, valor, descricao, aprovadoEm]
+      properties:
+        transferenciaId: { type: string, format: uuid }
+        contaOrigemId: { type: string, format: uuid }
+        titularOrigem: { type: string }
+        contaDestinoId: { type: string, format: uuid }
+        titularDestino: { type: string }
+        chavePixDestino: { type: string }
+        valor:
+          type: number
+          exclusiveMinimum: 0
+          description: Em reais, com duas casas decimais.
+        descricao:
+          type: string
+          description: Origem do pagamento, por exemplo "PIX" ou "Pagamento de cobrança (Queijo canastra)".
+        aprovadoEm: { type: string, format: date-time }

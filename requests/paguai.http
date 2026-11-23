@@ -1,5 +1,6 @@
-### PagUai: requisições prontas para o laboratório da Sprint 2 (Strangler Fig)
+### PagUai: requisições prontas para o laboratório da Sprint 3 (mensageria)
 ### Tudo passa pelo gateway (8080). Veja o cabeçalho X-PagUai-Servico de cada resposta: quem atendeu?
+### Depois de cada PIX, veja os e-mails no Mailpit (http://localhost:8025) e as filas no RabbitMQ (http://localhost:15672).
 ### Use com a extensão REST Client do VS Code (clique em "Send Request" acima de cada bloco).
 
 @api = http://localhost:8080
@@ -16,7 +17,8 @@ GET {{api}}/contas
 ### 3. Saldo da Ana: agora pertence ao módulo Pagamentos
 GET {{api}}/saldos/{{ana}}
 
-### 4. PIX simulado da Ana para a loja do Seu Geraldo (Pagamentos usa Contas, Antifraude e Notificações pelos contratos)
+### 4. PIX simulado da Ana para a loja do Seu Geraldo. Pagamentos responde sem esperar o e-mail:
+###    depois do commit, publica PagamentoAprovado, e Notificações e Extrato recebem cada um a sua cópia.
 POST {{api}}/transferencias
 Content-Type: application/json
 
@@ -36,7 +38,8 @@ Content-Type: application/json
   "valor": 6000.00
 }
 
-### 6. Extrato da Ana: agora atendido pelo SERVIÇO de Extrato (X-PagUai-Servico: extrato)
+### 6. Extrato da Ana, pelo modelo de leitura do serviço de Extrato. O PIX do passo 4 já está aqui?
+###    Repare em saldoEm: até quando o saldo está em dia (consistência eventual).
 GET {{api}}/contas/{{ana}}/extrato
 
 
@@ -68,7 +71,7 @@ GET {{api}}/contas/{{ana}}/extrato?limite=2
 ### 10. Período acima de 90 dias: 422 no formato Problem Details
 GET {{api}}/contas/{{ana}}/extrato?de=2026-01-01T00:00:00Z
 
-### 11. Direto no serviço de Extrato (sem o gateway)
+### 11. Direto no serviço de Extrato (sem o gateway). Funciona até com o monólito parado: docker compose stop api
 GET http://localhost:8082/contas/{{ana}}/extrato
 
 ### 12. No mock do contrato (Prism), sem código nenhum: docker compose --profile mock up -d mock

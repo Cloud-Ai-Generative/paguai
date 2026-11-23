@@ -14,7 +14,7 @@ public interface IManipulador<in TEvento> where TEvento : IEvento
 ///
 /// Serve para um módulo avisar os outros sem depender deles. Exemplo: Contas publica
 /// <c>ContaAberta</c> e Pagamentos cria o saldo, sem que Contas conheça Pagamentos.
-/// Na Sprint 3, eventos entre serviços passam por um broker de mensagens (RabbitMQ).
+/// Eventos para OUTROS SERVIÇOS (Sprint 3) não passam por aqui: veja <see cref="EventosDeIntegracao"/>.
 /// </summary>
 public sealed class PublicadorDeEventos(IServiceProvider servicos)
 {

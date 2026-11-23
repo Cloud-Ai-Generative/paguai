@@ -2,12 +2,14 @@ using PagUai.Api.Compartilhado;
 using PagUai.Api.Modulos.Antifraude;
 using PagUai.Api.Modulos.Cobrancas;
 using PagUai.Api.Modulos.Contas;
-using PagUai.Api.Modulos.Extrato;
-using PagUai.Api.Modulos.Notificacoes;
 using PagUai.Api.Modulos.Pagamentos;
 using Scalar.AspNetCore;
 
 // PagUai: fintech FICTÍCIA usada na disciplina "Arquitetura de Microsserviços e APIs".
+// Sprint 3: o monólito não manda mais e-mail nem monta extrato. Ele PUBLICA eventos (ContaAberta,
+// PagamentoAprovado) no RabbitMQ, e os serviços de Notificações e de Extrato consomem. O módulo de
+// Notificações virou o serviço PagUai.Notificacoes, e o Extrato antigo foi apagado.
+//
 // Sprint 2: o monólito modular agora fica ATRÁS de um gateway (PagUai.Gateway), e a rota do
 // extrato pode ir para o primeiro serviço extraído (PagUai.Extrato). Padrão Strangler Fig.
 //
@@ -21,8 +23,6 @@ builder.Services.AddModuloContas();
 builder.Services.AddModuloPagamentos();
 builder.Services.AddModuloCobrancas();
 builder.Services.AddModuloAntifraude(builder.Configuration);
-builder.Services.AddModuloExtrato();
-builder.Services.AddModuloNotificacoes(builder.Configuration);
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
@@ -58,7 +58,6 @@ app.MapGet("/health", async (UnidadeDeTrabalho unidade, CancellationToken ct) =>
 app.MapModuloContas();
 app.MapModuloPagamentos();
 app.MapModuloCobrancas();
-app.MapModuloExtrato();
 
 if (!app.Configuration.GetValue<bool>("PularPreparacaoDoBanco"))
 {
@@ -67,7 +66,6 @@ if (!app.Configuration.GetValue<bool>("PularPreparacaoDoBanco"))
     await ModuloPagamentos.MigrarAsync(app.Services);
     await ModuloCobrancas.MigrarAsync(app.Services);
     await ModuloAntifraude.MigrarAsync(app.Services);
-    await ModuloNotificacoes.MigrarAsync(app.Services);
     await ModuloContas.InserirDadosIniciaisAsync(app.Services);
 }
 

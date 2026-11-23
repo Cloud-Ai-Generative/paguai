@@ -5,7 +5,7 @@ using PagUai.Api.Modulos.Contas.Contratos;
 namespace PagUai.Api.Modulos.Contas.Interno;
 
 /// <summary>Implementa o contrato público <see cref="IContas"/> e as operações internas do módulo.</summary>
-public class ServicoDeContas(ContasDbContext db, UnidadeDeTrabalho unidade, PublicadorDeEventos eventos) : IContas
+public class ServicoDeContas(ContasDbContext db, UnidadeDeTrabalho unidade, PublicadorDeEventos eventos, EventosDeIntegracao integracao) : IContas
 {
     public async Task<ContaResumo?> ObterAsync(Guid contaId, CancellationToken ct) =>
         await db.Contas.Where(c => c.Id == contaId)
@@ -41,6 +41,11 @@ public class ServicoDeContas(ContasDbContext db, UnidadeDeTrabalho unidade, Publ
 
             // Contas não conhece Pagamentos: só avisa que a conta foi aberta.
             await eventos.PublicarAsync(new ContaAberta(conta.Id, conta.Titular, depositoInicial), ct);
+
+            // Sprint 3: e avisa os outros SERVIÇOS (o Extrato monta o seu modelo de leitura com isto).
+            // O evento só sai depois do commit.
+            integracao.PublicarAoConfirmar(MensagensDeContas.ContaAberta, MensagensDeContas.ChaveContaAberta,
+                new DadosDeContaAberta(conta.Id, conta.Titular, conta.ChavePix, depositoInicial, DateTime.UtcNow));
             return conta;
         }, ct);
 }

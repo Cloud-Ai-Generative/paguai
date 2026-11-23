@@ -7,10 +7,14 @@
 #
 # Restrição do Strangler Fig: o app já usa o extrato do monólito. Por isso este contrato só
 # ACRESCENTA campos e parâmetros opcionais ao formato antigo; nada do que existia muda.
+#
+# Sprint 3 (versão 1.1.0): o formato NÃO mudou. Mudou de onde vêm os dados: o Extrato passou a ter
+# banco próprio, montado com eventos. Por isso as descrições de `saldoEm`, do 404 e do 503 foram
+# atualizadas: o extrato pode estar alguns instantes atrás de Pagamentos (consistência eventual).
 openapi: 3.1.0
 info:
   title: PagUai · Serviço de Extrato
-  version: 1.0.0
+  version: 1.1.0
   description: |
     Extrato de uma conta: saldo atual e lançamentos do período, do mais recente para o mais antigo.
 
@@ -19,7 +23,9 @@ info:
       (texto, como "150.00", fica como candidato a uma nova versão na Sprint 7).
     - Paginação por cursor, opcional: sem `limite`, devolve até 100 lançamentos.
     - Período padrão de 30 dias e máximo de 90 dias.
-    - O saldo vem dentro do extrato, com o momento da consulta (`saldoEm`).
+    - O saldo vem dentro do extrato, com o momento a que ele se refere (`saldoEm`).
+    - Consistência eventual (Sprint 3, ADR 0005): o Extrato é atualizado por eventos, então um PIX
+      recém-feito pode levar alguns instantes para aparecer. `saldoEm` diz até quando o saldo está em dia.
     - Erros no formato Problem Details (RFC 9457), com um `type` para cada erro.
     - Sem prefixo de versão: só mudanças que não quebram.
   contact:
@@ -98,7 +104,7 @@ paths:
                     descricao: Depósito inicial
                 proximoCursor: null
         "404":
-          description: Conta não encontrada.
+          description: Conta não encontrada (ou aberta há instantes e ainda não recebida pelo Extrato).
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problema" }
@@ -118,7 +124,7 @@ paths:
                 status: 422
                 detail: O período máximo é de 90 dias.
         "503":
-          description: Uma dependência do extrato (Contas ou Pagamentos) está indisponível.
+          description: O banco do Extrato está indisponível.
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problema" }
@@ -126,7 +132,7 @@ paths:
                 type: https://paguai.local/problemas/dependencia-indisponivel
                 title: Dependência indisponível
                 status: 503
-                detail: Não foi possível consultar Pagamentos. Tente novamente em instantes.
+                detail: O banco do Extrato está indisponível. Tente novamente em instantes.
 components:
   schemas:
     Extrato:
@@ -143,7 +149,7 @@ components:
         saldoEm:
           type: string
           format: date-time
-          description: Momento em que o saldo foi consultado em Pagamentos.
+          description: Momento do último fato (abertura da conta ou PIX) aplicado ao saldo. Até a versão 1.0.0, era o momento da consulta.
         de: { type: string, format: date-time }
         ate: { type: string, format: date-time }
         lancamentos:

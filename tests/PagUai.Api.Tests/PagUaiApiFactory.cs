@@ -1,48 +1,39 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Testcontainers.PostgreSql;
+using PagUai.Testes;
 
 namespace PagUai.Api.Tests;
 
 /// <summary>
-/// Sobe a API inteira em memória, apontando para um PostgreSQL de verdade.
-/// Por padrão o banco vem de um contêiner (Testcontainers, exige Docker).
-/// Se a variável PAGUAI_TEST_DB estiver definida, usa essa connection string no lugar do contêiner.
+/// Sobe a API inteira em memória, apontando para um PostgreSQL e um RabbitMQ de verdade.
+/// Por padrão os dois vêm de contêineres (Testcontainers, exige Docker). Para usar servidores já
+/// em execução, defina PAGUAI_TEST_DB e PAGUAI_TEST_RABBITMQ (veja tests/Comum).
 /// </summary>
 public class PagUaiApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
-    private PostgreSqlContainer? _postgres;
-    private string _connectionString = string.Empty;
+    public string ConexaoDoBanco { get; private set; } = string.Empty;
+    public string UrlDoRabbitMq { get; private set; } = string.Empty;
 
     public async ValueTask InitializeAsync()
     {
-        var externa = Environment.GetEnvironmentVariable("PAGUAI_TEST_DB");
-        if (!string.IsNullOrWhiteSpace(externa))
-        {
-            _connectionString = externa;
-            return;
-        }
-
-        _postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();
-        await _postgres.StartAsync();
-        _connectionString = _postgres.GetConnectionString();
+        ConexaoDoBanco = await AmbientePostgres.ConexaoAsync("paguai");
+        UrlDoRabbitMq = await AmbienteRabbitMq.UrlAsync();
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        builder.UseSetting("ConnectionStrings:PagUai", _connectionString);
-        builder.UseSetting("Notificacoes:SmtpHost", "");
+        builder.UseSetting("ConnectionStrings:PagUai", ConexaoDoBanco);
+        builder.UseSetting("ConnectionStrings:RabbitMq", UrlDoRabbitMq);
         builder.UseSetting("Antifraude:LatenciaMs", "0");
     }
+}
 
-    public override async ValueTask DisposeAsync()
-    {
-        await base.DisposeAsync();
-        if (_postgres is not null)
-        {
-            await _postgres.DisposeAsync();
-        }
-
-        GC.SuppressFinalize(this);
-    }
+/// <summary>
+/// Todos os testes que sobem a API usam a MESMA instância (e o mesmo banco). Assim as migrations e os
+/// dados iniciais rodam uma vez só, sem duas API subindo ao mesmo tempo num banco vazio.
+/// </summary>
+[CollectionDefinition(Nome)]
+public class ColecaoDaApi : ICollectionFixture<PagUaiApiFactory>
+{
+    public const string Nome = "API com PostgreSQL e RabbitMQ";
 }

@@ -44,7 +44,7 @@ public class ContratoTests(ExtratoFactory factory) : IClassFixture<ExtratoFactor
     [Fact]
     public async Task Resposta_200_segue_o_contrato()
     {
-        var resposta = await _http.GetAsync($"/contas/{MonolitoFalso.ContaDaAna}/extrato?limite=2", TestContext.Current.CancellationToken);
+        var resposta = await _http.GetAsync($"/contas/{ExtratoFactory.ContaDaAna}/extrato?limite=2", TestContext.Current.CancellationToken);
 
         await AssertSegueOContrato(resposta, 200, "Extrato");
     }
@@ -61,21 +61,21 @@ public class ContratoTests(ExtratoFactory factory) : IClassFixture<ExtratoFactor
     [InlineData("cursor=lixo", "cursor-invalido")]
     public async Task Parametros_invalidos_respondem_422_do_contrato(string consulta, string tipo)
     {
-        var resposta = await _http.GetAsync($"/contas/{MonolitoFalso.ContaDaAna}/extrato?{consulta}", TestContext.Current.CancellationToken);
+        var resposta = await _http.GetAsync($"/contas/{ExtratoFactory.ContaDaAna}/extrato?{consulta}", TestContext.Current.CancellationToken);
 
         var corpo = await AssertSegueOContrato(resposta, 422, "Problema");
         Assert.Equal($"https://paguai.local/problemas/{tipo}", corpo!["type"]!.GetValue<string>());
     }
 
-    /// <summary>Falha parcial: o Extrato está no ar, mas o monólito não responde.</summary>
+    /// <summary>Falha parcial: o Extrato está no ar, mas o banco dele não responde.</summary>
     [Fact]
-    public async Task Monolito_fora_do_ar_responde_503_do_contrato()
+    public async Task Banco_fora_do_ar_responde_503_do_contrato()
     {
-        var fabrica = new ExtratoFactory();
-        fabrica.Monolito.ForaDoAr = true;
+        var fabrica = new ExtratoFactory { ConexaoForcada = "Host=127.0.0.1;Port=1;Database=extrato;Username=x;Password=x;Timeout=1" };
+        await fabrica.InitializeAsync();
         using var http = fabrica.CreateClient();
 
-        var resposta = await http.GetAsync($"/contas/{MonolitoFalso.ContaDaAna}/extrato", TestContext.Current.CancellationToken);
+        var resposta = await http.GetAsync($"/contas/{ExtratoFactory.ContaDaAna}/extrato", TestContext.Current.CancellationToken);
 
         await AssertSegueOContrato(resposta, 503, "Problema");
         await fabrica.DisposeAsync();

@@ -2,7 +2,6 @@ using Microsoft.EntityFrameworkCore;
 using PagUai.Api.Compartilhado;
 using PagUai.Api.Modulos.Antifraude.Contratos;
 using PagUai.Api.Modulos.Contas.Contratos;
-using PagUai.Api.Modulos.Notificacoes.Contratos;
 using PagUai.Api.Modulos.Pagamentos.Contratos;
 
 namespace PagUai.Api.Modulos.Pagamentos.Interno;
@@ -11,16 +10,18 @@ namespace PagUai.Api.Modulos.Pagamentos.Interno;
 /// Executa a transferência usando SÓ os contratos públicos dos outros módulos.
 ///
 /// O que a Sprint 1 resolveu: Pagamentos não grava mais tabelas de outros módulos.
+/// O que a Sprint 3 resolveu: Pagamentos não chama mais Notificações. Ele publica o evento
+/// PagamentoAprovado depois do commit e não espera ninguém. Uma falha no e-mail não desfaz o PIX.
 /// O que continua de propósito:
 ///  1. O Antifraude é chamado em processo e Pagamentos espera a resposta (Sprints 6 e 9).
-///  2. A notificação roda DENTRO da transação: se ela falhar, a transferência falha (Sprint 3).
+///  2. O evento pode se perder entre o commit e a publicação (dual write; padrão Outbox, ADR 0005).
 /// </summary>
 public class ServicoDePagamentos(
     PagamentosDbContext db,
     UnidadeDeTrabalho unidade,
     IContas contas,
     IAntifraude antifraude,
-    INotificacoes notificacoes) : IPagamentos
+    EventosDeIntegracao integracao) : IPagamentos
 {
     public Task<TransferenciaRealizada> TransferirAsync(Guid contaOrigemId, string chavePixDestino, decimal valor, string descricao, CancellationToken ct) =>
         unidade.ExecutarAsync(async () =>
@@ -76,9 +77,11 @@ public class ServicoDePagamentos(
             db.Lancamentos.Add(new Lancamento { ContaId = destino.Id, Tipo = TipoLancamento.Credito, Valor = valor, Descricao = $"{descricao} de {origem.Titular}" });
             await db.SaveChangesAsync(ct);
 
-            // 3. Notificação dentro da transação, pelo contrato público.
-            await notificacoes.NotificarAsync(origem.Id, origem.Titular, $"Você enviou R$ {valor:N2} para {destino.Titular}.", ct);
-            await notificacoes.NotificarAsync(destino.Id, destino.Titular, $"Você recebeu R$ {valor:N2} de {origem.Titular}.", ct);
+            // 3. Sprint 3: em vez de notificar, ANUNCIA o fato. Quem quiser reagir (Notificações, Extrato)
+            //    assina o evento no RabbitMQ. O evento só sai depois do commit.
+            integracao.PublicarAoConfirmar(MensagensDePagamentos.PagamentoAprovado, MensagensDePagamentos.ChavePagamentoAprovado,
+                new DadosDePagamentoAprovado(transferencia.Id, origem.Id, origem.Titular, destino.Id, destino.Titular,
+                    chavePixDestino, valor, descricao, agora));
 
             return ParaContrato(transferencia);
         }, ct);

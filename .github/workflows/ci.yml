@@ -27,7 +27,7 @@ jobs:
         run: dotnet test --no-build -c Release
 
   contrato:
-    name: Contrato do Extrato (lint)
+    name: Contratos (lint do OpenAPI e validação do AsyncAPI)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,6 +41,9 @@ jobs:
           echo 'extends: ["spectral:oas"]' > .spectral.yaml
           npx --yes @stoplight/spectral-cli@6 lint contratos/extrato.openapi.yaml --fail-severity=warn
 
+      - name: Validação do contrato de eventos (AsyncAPI)
+        run: npx --yes @asyncapi/cli@6 validate contratos/eventos.asyncapi.yaml --fail-severity=error
+
   docker-compose:
     runs-on: ubuntu-latest
     needs: build-e-testes
@@ -50,28 +53,42 @@ jobs:
       - name: Subir o ambiente
         run: docker compose up -d --build
 
-      - name: Esperar o gateway, o monólito e o Extrato
+      - name: Esperar o gateway, o monólito, o Extrato e o RabbitMQ
         run: |
           for i in $(seq 1 40); do
-            if curl -fs http://localhost:8080/health && curl -fs http://localhost:8082/health; then exit 0; fi
+            if curl -fs http://localhost:8080/health && curl -fs http://localhost:8082/health \
+               && curl -fs -u paguai:paguai_dev_123 http://localhost:15672/api/overview > /dev/null; then exit 0; fi
             sleep 3
           done
           docker compose logs
           exit 1
 
-      - name: Teste de fumaça pelo gateway (PIX, saldo e extrato no serviço novo)
+      - name: Topologia criada pelo broker ao subir (definitions.json)
+        run: |
+          curl -fs -u paguai:paguai_dev_123 http://localhost:15672/api/queues/%2F | jq -r '.[].name' | sort | tee filas.txt
+          for f in extrato extrato.dlq extrato.retry notificacoes notificacoes.dlq notificacoes.retry; do grep -qx "$f" filas.txt; done
+
+      - name: Teste de fumaça (PIX, e-mail por evento e extrato pelo modelo de leitura)
         run: |
           ANA=$(curl -fs http://localhost:8080/contas | jq -r '.[] | select(.titular | startswith("Ana")) | .id')
           echo "ANA=$ANA" >> "$GITHUB_ENV"
           curl -fs -X POST http://localhost:8080/transferencias \
             -H 'content-type: application/json' \
             -d "{\"contaOrigemId\":\"$ANA\",\"chavePixDestino\":\"loja.geraldo@paguai.local\",\"valor\":10}"
-          curl -fs http://localhost:8025/api/v1/messages | jq '.total'
-          curl -fs http://localhost:8080/saldos/$ANA | jq '.saldo'
-          curl -fsi "http://localhost:8080/contas/$ANA/extrato?limite=1" | tee extrato.txt
+          for i in $(seq 1 20); do
+            test "$(curl -fs http://localhost:8025/api/v1/messages | jq '.total')" -ge 2 && break
+            sleep 1
+          done
+          test "$(curl -fs http://localhost:8025/api/v1/messages | jq '.total')" -ge 2
+          for i in $(seq 1 20); do
+            curl -fs "http://localhost:8080/contas/$ANA/extrato" | jq -e '.lancamentos | map(select(.descricao == "PIX para Loja do Seu Geraldo")) | length == 1' && break
+            sleep 1
+          done
+          curl -fsi "http://localhost:8080/contas/$ANA/extrato" | tee extrato.txt
           grep -qi "x-paguai-servico: extrato" extrato.txt
+          grep -q '"saldoAtual":9990' extrato.txt
 
-      - name: Extrato fora do ar não derruba o PIX
+      - name: Extrato fora do ar não derruba o PIX, e depois se atualiza sozinho
         run: |
           docker compose stop extrato
           test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/contas/$ANA/extrato)" = "502"
@@ -79,14 +96,45 @@ jobs:
             -H 'content-type: application/json' \
             -d "{\"contaOrigemId\":\"$ANA\",\"chavePixDestino\":\"loja.geraldo@paguai.local\",\"valor\":5}")" = "201"
           docker compose start extrato
+          for i in $(seq 1 30); do
+            curl -fs "http://localhost:8080/contas/$ANA/extrato" | jq -e '.saldoAtual == 9985' && exit 0
+            sleep 2
+          done
+          exit 1
 
-      - name: Voltar atrás (Strangler__Extrato=monolito)
+      - name: Monólito fora do ar não derruba o extrato
         run: |
-          sed -i 's/Strangler__Extrato: "servico"/Strangler__Extrato: "monolito"/' docker-compose.yml
-          docker compose up -d gateway
-          sleep 5
-          curl -fsi http://localhost:8080/contas/$ANA/extrato | grep -i "x-paguai-servico: monolito"
+          docker compose stop api
+          curl -fs "http://localhost:8082/contas/$ANA/extrato" | jq -e '.saldoAtual == 9985'
+          docker compose start api
+          for i in $(seq 1 30); do curl -fs http://localhost:8080/health && exit 0; sleep 2; done
+          exit 1
+
+      - name: Falha no e-mail não desfaz o PIX (retry, dead letter e reprocessamento)
+        run: |
+          sed -i 's/Notificacoes__SimularFalha: "false"/Notificacoes__SimularFalha: "true"/' docker-compose.yml
+          docker compose up -d notificacoes
+          sleep 8
+          ANTES=$(curl -fs http://localhost:8025/api/v1/messages | jq '.total')
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8080/transferencias \
+            -H 'content-type: application/json' \
+            -d "{\"contaOrigemId\":\"$ANA\",\"chavePixDestino\":\"loja.geraldo@paguai.local\",\"valor\":1}")" = "201"
+          for i in $(seq 1 40); do
+            test "$(curl -fs -u paguai:paguai_dev_123 http://localhost:15672/api/queues/%2F/notificacoes.dlq | jq '.messages')" = "1" && break
+            sleep 2
+          done
+          test "$(curl -fs -u paguai:paguai_dev_123 http://localhost:15672/api/queues/%2F/notificacoes.dlq | jq '.messages')" = "1"
+          docker compose logs notificacoes | grep "Tentativa 3 de 3"
           git checkout -- docker-compose.yml
+          docker compose up -d notificacoes
+          sleep 8
+          docker compose exec -T rabbitmq rabbitmqctl set_parameter shovel reprocessar-notificacoes \
+            '{"src-uri":"amqp://","src-queue":"notificacoes.dlq","dest-uri":"amqp://","dest-queue":"notificacoes","src-delete-after":"queue-length"}'
+          for i in $(seq 1 30); do
+            test "$(curl -fs http://localhost:8025/api/v1/messages | jq '.total')" -ge $((ANTES + 2)) && exit 0
+            sleep 2
+          done
+          exit 1
 
       - name: Mock do contrato com Prism
         run: |
@@ -100,8 +148,8 @@ jobs:
 
       - name: Logs sem avisos conhecidos
         run: |
-          docker compose logs api extrato gateway > servicos.log
-          if grep -E "libgssapi|Overriding HTTP_PORTS" servicos.log; then
+          docker compose logs api extrato notificacoes gateway > servicos.log
+          if grep -E "libgssapi|Overriding HTTP_PORTS|fail: Microsoft.EntityFrameworkCore|EVENTO PERDIDO" servicos.log; then
             echo "Encontrado aviso que deveria ter sido eliminado"; exit 1
           fi
 

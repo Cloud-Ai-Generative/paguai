@@ -3,10 +3,14 @@
     <Project Path="src/PagUai.Api/PagUai.Api.csproj" />
     <Project Path="src/PagUai.Extrato/PagUai.Extrato.csproj" />
     <Project Path="src/PagUai.Gateway/PagUai.Gateway.csproj" />
+    <Project Path="src/PagUai.Mensageria/PagUai.Mensageria.csproj" />
+    <Project Path="src/PagUai.Notificacoes/PagUai.Notificacoes.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/PagUai.Api.Tests/PagUai.Api.Tests.csproj" />
     <Project Path="tests/PagUai.Extrato.Tests/PagUai.Extrato.Tests.csproj" />
     <Project Path="tests/PagUai.Gateway.Tests/PagUai.Gateway.Tests.csproj" />
+    <Project Path="tests/PagUai.Mensageria.Tests/PagUai.Mensageria.Tests.csproj" />
+    <Project Path="tests/PagUai.Notificacoes.Tests/PagUai.Notificacoes.Tests.csproj" />
   </Folder>
 </Solution>
