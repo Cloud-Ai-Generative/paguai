@@ -6,7 +6,7 @@ namespace PagUai.Testes;
 /// <summary>
 /// PostgreSQL para os testes. Por padrão sobe um contêiner (Testcontainers, exige Docker), um só
 /// para todo o projeto de testes. Se a variável PAGUAI_TEST_DB estiver definida, usa esse servidor.
-/// Cada chamada pode pedir um database diferente; o EF Core cria o database na migration.
+/// Cada chamada pode pedir um database diferente; ele é criado se ainda não existir.
 /// </summary>
 public static class AmbientePostgres
 {
@@ -36,6 +36,36 @@ public static class AmbientePostgres
             baseDaConexao = _conteiner.GetConnectionString();
         }
 
+        await Trava.WaitAsync(); // testes em paralelo pedindo o mesmo database
+        try
+        {
+            await CriarSeNaoExistirAsync(baseDaConexao, database);
+        }
+        finally
+        {
+            Trava.Release();
+        }
+
         return new NpgsqlConnectionStringBuilder(baseDaConexao) { Database = database }.ConnectionString;
+    }
+
+    private static async Task CriarSeNaoExistirAsync(string baseDaConexao, string database)
+    {
+        await using var conexao = new NpgsqlConnection(new NpgsqlConnectionStringBuilder(baseDaConexao) { Database = "postgres" }.ConnectionString);
+        await conexao.OpenAsync();
+        await using var existe = new NpgsqlCommand("SELECT 1 FROM pg_database WHERE datname = @nome", conexao);
+        existe.Parameters.AddWithValue("nome", database);
+        if (await existe.ExecuteScalarAsync() is null)
+        {
+            try
+            {
+                await using var criar = new NpgsqlCommand($"CREATE DATABASE \"{database}\"", conexao);
+                await criar.ExecuteNonQueryAsync();
+            }
+            catch (PostgresException ex) when (ex.SqlState is PostgresErrorCodes.DuplicateDatabase or PostgresErrorCodes.UniqueViolation)
+            {
+                // outro processo de testes criou ao mesmo tempo
+            }
+        }
     }
 }

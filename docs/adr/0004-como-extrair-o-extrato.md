@@ -1,6 +1,6 @@
 # ADR 0004: Como extrair o Extrato (Strangler Fig, gateway e contrato)
 
-- **Status:** aceita (Sprint 2)
+- **Status:** aceita (Sprint 2). Em parte substituída pelo [ADR 0005](0005-mensageria.md): desde a Sprint 3, o Extrato tem banco próprio, alimentado por eventos.
 - **Proposto por:** o(a) arquiteto(a) do time (você, na Sprint 2)
 - **Participantes:** Lívia Andrade (front-end, representante dos consumidores da API), Joana Lima (Product Owner), Rafa Souza (Tech Lead)
 - **Revisão e aprovação:** Helena Rocha, Coordenadora de Arquitetura
@@ -43,5 +43,3 @@ O serviço nasce **contract-first**: o contrato foi combinado com a Lívia na Sa
 - Um deploy ou uma falha do Extrato não derruba mais o PIX.
 - Em troca, cada consulta faz três chamadas HTTP ao monólito, e o Extrato depende dele: com o monólito fora, responde 503; com o monólito lento, fica esperando, porque ainda não há timeout (dor proposital).
 - O Extrato antigo será apagado do monólito na Sprint 3.
-
-> **Atualização (Sprint 3, ADR 0005):** a alternativa adiada foi adotada. O Extrato passou a ter banco próprio, alimentado por eventos, e não chama mais o monólito. O Extrato antigo e a configuração `Strangler__Extrato` foram apagados.

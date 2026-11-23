@@ -27,3 +27,13 @@ public class PagUaiApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("Antifraude:LatenciaMs", "0");
     }
 }
+
+/// <summary>
+/// Todos os testes que sobem a API usam a MESMA instância (e o mesmo banco). Assim as migrations e os
+/// dados iniciais rodam uma vez só, sem duas API subindo ao mesmo tempo num banco vazio.
+/// </summary>
+[CollectionDefinition(Nome)]
+public class ColecaoDaApi : ICollectionFixture<PagUaiApiFactory>
+{
+    public const string Nome = "API com PostgreSQL e RabbitMQ";
+}

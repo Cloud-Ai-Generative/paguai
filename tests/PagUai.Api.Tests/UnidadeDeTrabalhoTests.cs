@@ -4,7 +4,8 @@ using PagUai.Api.Compartilhado;
 namespace PagUai.Api.Tests;
 
 /// <summary>Sprint 3: o evento para outros serviços só pode sair depois do commit, e só se houver commit.</summary>
-public class UnidadeDeTrabalhoTests(PagUaiApiFactory factory) : IClassFixture<PagUaiApiFactory>
+[Collection(ColecaoDaApi.Nome)]
+public class UnidadeDeTrabalhoTests(PagUaiApiFactory factory)
 {
     private UnidadeDeTrabalho Nova() =>
         new(new ConfigurationBuilder()

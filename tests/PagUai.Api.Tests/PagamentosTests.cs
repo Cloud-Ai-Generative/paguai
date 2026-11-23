@@ -7,7 +7,8 @@ using PagUai.Api.Modulos.Pagamentos.Interno;
 namespace PagUai.Api.Tests;
 
 /// <summary>Testes de integração: API + PostgreSQL de verdade, passando por vários módulos.</summary>
-public class PagamentosTests(PagUaiApiFactory factory) : IClassFixture<PagUaiApiFactory>
+[Collection(ColecaoDaApi.Nome)]
+public class PagamentosTests(PagUaiApiFactory factory)
 {
     private readonly HttpClient _http = factory.CreateClient();
 

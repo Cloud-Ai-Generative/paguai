@@ -7,7 +7,8 @@ using PagUai.Api.Modulos.Pagamentos.Interno;
 namespace PagUai.Api.Tests;
 
 /// <summary>Sprint 3: o monólito anuncia o que aconteceu, pelo RabbitMQ, depois do commit.</summary>
-public class EventosTests(PagUaiApiFactory factory) : IClassFixture<PagUaiApiFactory>
+[Collection(ColecaoDaApi.Nome)]
+public class EventosTests(PagUaiApiFactory factory)
 {
     private readonly HttpClient _http = factory.CreateClient();
 
